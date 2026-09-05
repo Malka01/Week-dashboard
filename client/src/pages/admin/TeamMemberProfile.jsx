@@ -8,8 +8,8 @@ import {
 } from "../../services/teamService";
 
 const statusStyles = {
-  DRAFT:
-    "bg-slate-100 text-slate-700",
+  // DRAFT:
+  //   "bg-slate-100 text-slate-700",
   SUBMITTED:
     "bg-blue-100 text-blue-700",
   NEEDS_CORRECTION:
@@ -19,7 +19,7 @@ const statusStyles = {
 };
 
 const statusLabels = {
-  DRAFT: "Draft",
+  // DRAFT: "Draft",
   SUBMITTED: "Submitted",
   NEEDS_CORRECTION: "Needs Correction",
   APPROVED: "Approved",
@@ -235,7 +235,7 @@ const TeamMemberProfile = () => {
         )}
 
         {/* Statistics */}
-        <section className="grid grid-cols-2 lg:grid-cols-5 gap-4">
+        <section className="grid grid-cols-2 lg:grid-cols-4 gap-4">
 
           <StatCard
             label="Total Reports"
@@ -257,10 +257,10 @@ const TeamMemberProfile = () => {
             value={statistics.correctionReports}
           />
 
-          <StatCard
+          {/* <StatCard
             label="Drafts"
             value={statistics.draftReports}
-          />
+          /> */}
 
         </section>
 

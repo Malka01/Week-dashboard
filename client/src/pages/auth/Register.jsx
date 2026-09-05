@@ -175,7 +175,7 @@ const Register = () => {
           </div>
 
           {/* Role */}
-          <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
+          {/* <div className="rounded-lg bg-slate-50 border border-slate-200 p-3">
             <p className="text-sm text-slate-600">
               Account type
             </p>
@@ -187,7 +187,7 @@ const Register = () => {
             <p className="text-xs text-slate-500 mt-1">
               Admin accounts are created separately by the system administrator.
             </p>
-          </div>
+          </div> */}
 
           {/* Submit */}
           <button

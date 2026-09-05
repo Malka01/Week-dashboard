@@ -35,6 +35,22 @@ const getProjects = async (req, res) => {
   }
 };
 
+const getAllProjects = async (req, res) => {
+  try {
+    const projects = await projectService.getAllProjects();
+
+    res.status(200).json({
+      success: true,
+      data: projects,
+    });
+  } catch (error) {
+    res.status(500).json({
+      success: false,
+      message: error.message,
+    });
+  }
+};
+
 const getProjectById = async (req, res) => {
   try {
     const project =
@@ -96,6 +112,7 @@ const deleteProject = async (req, res) => {
 module.exports = {
   createProject,
   getProjects,
+  getAllProjects,
   getProjectById,
   updateProject,
   deleteProject,

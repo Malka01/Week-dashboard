@@ -6,6 +6,7 @@ const authorizeRoles = require("../middleware/role.middleware");
 const {
   createProject,
   getProjects,
+  getAllProjects,
   getProjectById,
   updateProject,
   deleteProject,
@@ -20,6 +21,12 @@ router.get(
   "/",
   authorizeRoles("ADMIN", "TEAM_MEMBER"),
   getProjects
+);
+
+router.get(
+  "/all",
+  authorizeRoles("ADMIN"),
+  getAllProjects
 );
 
 router.get(

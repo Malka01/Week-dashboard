@@ -32,12 +32,22 @@ export const AuthProvider = ({ children }) => {
     setUser(null);
   };
 
+  const updateUser = (updatedUser) => { 
+    setUser(updatedUser); 
+    localStorage.setItem( 
+      "user", JSON.stringify
+      // eslint-disable-next-line no-unexpected-multiline
+      (updatedUser) 
+    ); 
+  };
+
   return (
     <AuthContext.Provider
       value={{
         user,
         login,
         logout,
+        updateUser,
         isAuthenticated: !!user,
       }}
     >

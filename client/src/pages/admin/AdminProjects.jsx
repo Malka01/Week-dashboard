@@ -2,21 +2,20 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import {
-getProjects,
+getAllProjects,
 createProject,
 updateProject,
 deleteProject,
 } from "../../services/projectService";
+import { useToast } from "../../context/ToastContext";
 
 const AdminProjects = () => {
 const navigate = useNavigate();
+const { showSuccess, showError } = useToast();
 
 const [projects, setProjects] = useState([]);
 const [loading, setLoading] = useState(true);
 const [saving, setSaving] = useState(false);
-const [error, setError] = useState("");
-const [success, setSuccess] = useState("");
-
 const [showModal, setShowModal] = useState(false);
 const [editingProject, setEditingProject] = useState(null);
 
@@ -28,18 +27,14 @@ description: "",
 const loadProjects = async () => {
 try {
 setLoading(true);
-setError("");
 
-  const data = await getProjects();
+  const data = await getAllProjects();
 
   setProjects(data || []);
 } catch (error) {
   console.error("Failed to load projects:", error);
 
-  setError(
-    error.response?.data?.message ||
-      "Failed to load projects."
-  );
+  showError(error.response?.data?.message || "Failed to load projects.");
 } finally {
   setLoading(false);
 }
@@ -60,8 +55,6 @@ setForm({
   description: "",
 });
 
-setError("");
-setSuccess("");
 setShowModal(true);
 
 };
@@ -75,8 +68,6 @@ setForm({
   description: project.description || "",
 });
 
-setError("");
-setSuccess("");
 setShowModal(true);
 
 
@@ -114,29 +105,26 @@ event.preventDefault();
 
 
 if (!form.name.trim()) {
-  setError("Project name is required.");
+  showError("Project name is required.");
   return;
 }
 
 try {
   setSaving(true);
-  setError("");
-  setSuccess("");
-
   if (editingProject) {
     await updateProject(editingProject._id, {
       name: form.name.trim(),
       description: form.description.trim(),
     });
 
-    setSuccess("Project updated successfully.");
+    showSuccess("Project updated successfully.");
   } else {
     await createProject({
       name: form.name.trim(),
       description: form.description.trim(),
     });
 
-    setSuccess("Project created successfully.");
+    showSuccess("Project created successfully.");
   }
 
   closeModal();
@@ -144,10 +132,7 @@ try {
 } catch (error) {
   console.error("Failed to save project:", error);
 
-  setError(
-    error.response?.data?.message ||
-      "Failed to save project."
-  );
+  showError(error.response?.data?.message || "Failed to save project.");
 } finally {
   setSaving(false);
 }
@@ -157,15 +142,11 @@ try {
 
 const handleToggleStatus = async (project) => {
 try {
-setError("");
-setSuccess("");
-
-
   await updateProject(project._id, {
     isActive: !project.isActive,
   });
 
-  setSuccess(
+  showSuccess(
     `${project.name} ${
       project.isActive ? "deactivated" : "activated"
     } successfully.`
@@ -178,10 +159,7 @@ setSuccess("");
     error
   );
 
-  setError(
-    error.response?.data?.message ||
-      "Failed to update project status."
-  );
+  showError(error.response?.data?.message || "Failed to update project status.");
 }
 
 
@@ -196,21 +174,15 @@ const confirmed = window.confirm(
 if (!confirmed) return;
 
 try {
-  setError("");
-  setSuccess("");
-
   await deleteProject(project._id);
 
-  setSuccess("Project deleted successfully.");
+  showSuccess("Project deleted successfully.");
 
   await loadProjects();
 } catch (error) {
   console.error("Failed to delete project:", error);
 
-  setError(
-    error.response?.data?.message ||
-      "Failed to delete project."
-  );
+  showError(error.response?.data?.message || "Failed to delete project.");
 }
 
 
@@ -223,14 +195,14 @@ return ( <div className="min-h-screen bg-slate-50 p-4 md:p-6"> <div className="m
     <div className="flex flex-col md:flex-row md:items-center md:justify-between gap-4">
 
       <div>
-        <button
+        {/* <button
           onClick={() =>
             navigate("/admin/dashboard")
           }
           className="text-sm text-indigo-600 hover:text-indigo-700 mb-3"
         >
           ← Back to Dashboard
-        </button>
+        </button> */}
 
         <h1 className="text-2xl md:text-3xl font-bold text-slate-900">
           Projects & Categories
@@ -248,19 +220,6 @@ return ( <div className="min-h-screen bg-slate-50 p-4 md:p-6"> <div className="m
         + Add Project
       </button>
     </div>
-
-    {/* Messages */}
-    {error && !showModal && (
-      <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-4">
-        {error}
-      </div>
-    )}
-
-    {success && (
-      <div className="bg-green-50 border border-green-200 text-green-700 rounded-lg p-4">
-        {success}
-      </div>
-    )}
 
     {/* Summary */}
     <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
@@ -506,12 +465,6 @@ return ( <div className="min-h-screen bg-slate-50 p-4 md:p-6"> <div className="m
           onSubmit={handleSubmit}
           className="p-6 space-y-5"
         >
-
-          {error && (
-            <div className="bg-red-50 border border-red-200 text-red-700 rounded-lg p-3 text-sm">
-              {error}
-            </div>
-          )}
 
           <div>
             <label className="block text-sm font-medium text-slate-700 mb-2">

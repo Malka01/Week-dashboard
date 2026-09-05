@@ -30,6 +30,12 @@ const getProjects = async () => {
     .sort({ name: 1 });
 };
 
+const getAllProjects = async () => {
+  return Project.find()
+    .populate("assignedMembers", "name email")
+    .sort({ name: 1 });
+};
+
 const getProjectById = async (projectId) => {
   const project = await Project.findById(projectId).populate(
     "assignedMembers",
@@ -89,6 +95,7 @@ const deleteProject = async (projectId) => {
 module.exports = {
   createProject,
   getProjects,
+  getAllProjects,
   getProjectById,
   updateProject,
   deleteProject,

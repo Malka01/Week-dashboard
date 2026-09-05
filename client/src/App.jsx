@@ -4,51 +4,54 @@ import {
   Route,
 } from "react-router-dom";
 
+// Auth Pages
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
+
+// Route Protection
 import ProtectedRoute from "./routes/ProtectedRoute";
 import RoleRoute from "./routes/RoleRoute";
+
+// Team Member Pages
 import TeamDashboard from "./pages/team-member/TeamDashboard";
 import WeeklyReport from "./pages/team-member/WeeklyReport";
 import ReportHistory from "./pages/team-member/ReportHistory";
 import ReportDetail from "./pages/team-member/ReportDetail";
+
+// Admin Pages
 import AdminDashboard from "./pages/admin/AdminDashboard";
 import AdminReportReview from "./pages/admin/AdminReportReview";
 import AdminProjects from "./pages/admin/AdminProjects";
 import AdminUsers from "./pages/admin/AdminUsers";
 import TeamMemberProfile from "./pages/admin/TeamMemberProfile";
+import AdminLayout from "./layouts/AdminLayout";
+import AdminReports from "./pages/admin/AdminReports";
+import AdminAccount from "./pages/admin/AdminAccount";
 
 
-// const TeamDashboard = () => (
-//   <div className="p-8">
-//     <h1 className="text-3xl font-bold">
-//       Team Member Dashboard
-//     </h1>
-//   </div>
-// );
+import { ToastProvider } from "./context/ToastContext";
 
-// const AdminDashboard = () => (
-//   <div className="p-8">
-//     <h1 className="text-3xl font-bold">
-//       Admin Dashboard
-//     </h1>
-//   </div>
-// );
 
 const App = () => {
   return (
-    <BrowserRouter>
-      <Routes>
+    <ToastProvider>
+      <BrowserRouter>
+        <Routes>
 
+  {/* AUTHENTICATION ROUTES */}
+        {/* Login */}
         <Route
           path="/login"
           element={<Login />}
         />
+
+        {/* Registration */}
         <Route
           path="/register"
           element={<Register />}
         />
 
+        {/* Team Member Dashboard */}
         <Route
           path="/team/dashboard"
           element={
@@ -59,60 +62,8 @@ const App = () => {
             </ProtectedRoute>
           }
         />
-     
-      <Route
-        path="/admin/reports/:id/review"
-        element={
-          <ProtectedRoute>
-            <RoleRoute allowedRoles={["ADMIN"]}>
-              <AdminReportReview />
-            </RoleRoute>
-          </ProtectedRoute>
-        }
-      />
 
-        <Route
-          path="/admin/dashboard"
-          element={
-            <ProtectedRoute>
-              <RoleRoute
-                allowedRoles={["ADMIN"]}
-              >
-                <AdminDashboard />
-              </RoleRoute>
-            </ProtectedRoute>
-          }
-        />
-
-        <Route
-      path="/admin/projects"
-      element={ <ProtectedRoute>
-      <RoleRoute allowedRoles={["ADMIN"]}> 
-        <AdminProjects /> 
-        </RoleRoute> 
-        </ProtectedRoute>
-      }
-      />
-      <Route
-      path="/admin/users"
-      element={ <ProtectedRoute>
-      <RoleRoute allowedRoles={["ADMIN"]}> 
-        <AdminUsers /> 
-        </RoleRoute> 
-        </ProtectedRoute>
-      }
-      />
-       <Route
-        path="/admin/team/:id"
-        element={
-          <ProtectedRoute>
-            <RoleRoute allowedRoles={["ADMIN"]}>
-              <TeamMemberProfile />
-            </RoleRoute>
-          </ProtectedRoute>
-        }
-      />
-
+        {/* Create New Weekly Report */}
         <Route
           path="/team/report"
           element={
@@ -123,6 +74,20 @@ const App = () => {
             </ProtectedRoute>
           }
         />
+
+        {/* Edit Existing Weekly Report */}
+        <Route
+          path="/team/report/:id"
+          element={
+            <ProtectedRoute>
+              <RoleRoute allowedRoles={["TEAM_MEMBER"]}>
+                <WeeklyReport />
+              </RoleRoute>
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Report History */}
         <Route
           path="/team/reports"
           element={
@@ -134,6 +99,7 @@ const App = () => {
           }
         />
 
+        {/* Report Details */}
         <Route
           path="/team/reports/:id"
           element={
@@ -145,8 +111,63 @@ const App = () => {
           }
         />
 
-      </Routes>
-    </BrowserRouter>
+    {/* ADMIN ROUTES */}
+
+        <Route
+          path="/admin"
+          element={
+            <ProtectedRoute>
+              <RoleRoute allowedRoles={["ADMIN"]}>
+                <AdminLayout />
+              </RoleRoute>
+            </ProtectedRoute>
+          }
+        >
+          {/* Dashboard */}
+          <Route
+            path="dashboard"
+            element={<AdminDashboard />}
+          />
+
+          {/* Reports */}
+          <Route
+            path="reports"
+            element={<AdminReports />}
+          />
+
+          {/* Report Review */}
+          <Route
+            path="reports/:id/review"
+            element={<AdminReportReview />}
+          />
+
+          {/* Projects & Categories */}
+          <Route
+            path="projects"
+            element={<AdminProjects />}
+          />
+
+          {/* User Management */}
+          <Route
+            path="users"
+            element={<AdminUsers />}
+          />
+
+          {/* Team Member Profile */}
+          <Route
+            path="team/:id"
+            element={<TeamMemberProfile />}
+          />
+
+          {/* Account Settings */}
+          <Route
+            path="account"
+            element={<AdminAccount />}
+          />
+        </Route>
+        </Routes>
+      </BrowserRouter>
+    </ToastProvider>
   );
 };
 

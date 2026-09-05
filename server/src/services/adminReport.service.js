@@ -9,9 +9,11 @@ const getAllReports = async ({
   startDate,
   endDate,
 }) => {
-  const filter = {};
+  const filter = {
+    status: { $ne: "DRAFT" },
+  };
 
-  if (status) {
+  if (status && status !== "DRAFT") {
     filter.status = status;
   }
 
@@ -31,7 +33,10 @@ const getAllReports = async ({
     }
 
     if (endDate) {
-      filter.weekStart.$lte = new Date(endDate);
+      const end = new Date(endDate);
+      end.setHours(23, 59, 59, 999);
+
+      filter.weekStart.$lte = end;
     }
   }
 

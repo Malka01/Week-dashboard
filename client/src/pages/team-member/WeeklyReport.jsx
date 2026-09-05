@@ -1,13 +1,15 @@
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useParams } from "react-router-dom";
 
 import {
   createReport,
   updateReport,
   submitReport,
+  getReportById,
 } from "../../services/reportService";
 
 import { getProjects } from "../../services/projectService";
+import { useToast } from "../../context/ToastContext";
 
 const emptyTask = {
   taskName: "",
@@ -20,80 +22,392 @@ const emptyTask = {
   output: "",
 };
 
+const emptyBlocker = {
+  description: "",
+  isKeyIssue: false,
+};
+
+const emptyAchievement = {
+  description: "",
+  isKeyAchievement: false,
+};
+
+const initialForm = {
+  weekStart: "",
+  weekEnd: "",
+  projectId: "",
+
+  tasks: [{ ...emptyTask }],
+
+  nextWeekTasks: [""],
+
+  blockers: [{ ...emptyBlocker }],
+
+  achievements: [{ ...emptyAchievement }],
+
+  hours: {
+    development: 0,
+    testing: 0,
+    meetings: 0,
+    research: 0,
+    other: 0,
+  },
+
+  notes: "",
+};
+
+/*
+ * Convert API date to YYYY-MM-DD safely.
+ *
+ * Avoid using toISOString() for date-only
+ * form values because timezone conversion can
+ * move the date backward/forward.
+ */
+const formatDateForInput = (dateValue) => {
+  if (!dateValue) {
+    return "";
+  }
+
+  const dateString = String(dateValue);
+
+  /*
+   * If backend already returns:
+   * 2026-09-01
+   * or
+   * 2026-09-01T00:00:00.000Z
+   *
+   * taking the first 10 characters keeps
+   * the original calendar date.
+   */
+  if (/^\d{4}-\d{2}-\d{2}/.test(dateString)) {
+    return dateString.substring(0, 10);
+  }
+
+  const date = new Date(dateValue);
+
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+
+  const year = date.getFullYear();
+  const month = String(
+    date.getMonth() + 1
+  ).padStart(2, "0");
+  const day = String(
+    date.getDate()
+  ).padStart(2, "0");
+
+  return `${year}-${month}-${day}`;
+};
+
 const WeeklyReport = () => {
   const navigate = useNavigate();
+  const { showSuccess, showError } = useToast();
+
+  const { id } = useParams();
+
+  const isEditMode = Boolean(id);
+
+  // =========================
+  // State
+  // =========================
 
   const [projects, setProjects] = useState([]);
 
   const [reportId, setReportId] = useState(null);
 
+  /*
+   * loading = loading initial page/report data
+   * saving = create/update/submit operation
+   */
   const [loading, setLoading] = useState(false);
-
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
 
   const [form, setForm] = useState({
-    weekStart: "",
-    weekEnd: "",
-    projectId: "",
-
-    tasks: [
-      {
-        ...emptyTask,
-      },
-    ],
-
+    ...initialForm,
+    tasks: [{ ...emptyTask }],
     nextWeekTasks: [""],
-
-    blockers: [
-      {
-        description: "",
-        isKeyIssue: false,
-      },
-    ],
-
-    achievements: [
-      {
-        description: "",
-        isKeyAchievement: false,
-      },
-    ],
-
+    blockers: [{ ...emptyBlocker }],
+    achievements: [{ ...emptyAchievement }],
     hours: {
-      development: 0,
-      testing: 0,
-      meetings: 0,
-      research: 0,
-      other: 0,
+      ...initialForm.hours,
     },
-
-    notes: "",
   });
 
-  /*
-   * Load available projects.
-   */
+  // =========================
+  // Load Projects
+  // =========================
+
   useEffect(() => {
+    let mounted = true;
+
     const loadProjects = async () => {
       try {
         const data = await getProjects();
-        setProjects(data);
+
+        if (!mounted) {
+          return;
+        }
+
+        /*
+         * Support either:
+         *
+         * data = [...]
+         *
+         * or:
+         *
+         * data = { projects: [...] }
+         */
+        const projectList = Array.isArray(data)
+          ? data
+          : data?.projects || [];
+
+        setProjects(projectList);
       } catch (error) {
         console.error(
           "Failed to load projects:",
           error
         );
 
-        setError("Unable to load projects.");
+        if (mounted) {
+          showError(
+            "Unable to load projects."
+          );
+        }
       }
     };
 
     loadProjects();
-  }, []);
 
-  /*
-   * Generic field change.
-   */
+    return () => {
+      mounted = false;
+    };
+  }, [showError]);
+
+  // =========================
+  // Load Existing Report
+  // =========================
+
+  useEffect(() => {
+    if (!id) {
+      return;
+    }
+
+    let mounted = true;
+
+    const loadReport = async () => {
+      try {
+        setLoading(true);
+
+        const response = await getReportById(id);
+
+        if (!mounted) {
+          return;
+        }
+
+        /*
+         * Your current API structure is expected
+         * to return:
+         *
+         * {
+         *   report,
+         *   reviews,
+         *   versions
+         * }
+         *
+         * But this also safely supports a direct
+         * report response.
+         */
+        const report =
+          response?.report ||
+          response?.data?.report ||
+          response?.data ||
+          response;
+
+        if (!report || !report._id) {
+          showError("Report not found.");
+          navigate(`/team/reports/${id}`, {
+            replace: true,
+          });
+          return;
+        }
+
+        /*
+         * Only DRAFT and NEEDS_CORRECTION
+         * can be edited.
+         */
+        const editableStatuses = [
+          "DRAFT",
+          "NEEDS_CORRECTION",
+        ];
+
+        if (
+          !editableStatuses.includes(
+            report.status
+          )
+        ) {
+          // showError(
+          //   "This report cannot be edited in its current status."
+          // );
+
+          /*
+           * Send the user to the read-only
+           * report details page.
+           */
+          navigate(`/team/reports/${id}`, {
+            replace: true,
+          });
+
+          return;
+        }
+
+        setReportId(report._id);
+
+        setForm({
+          weekStart: formatDateForInput(
+            report.weekStart
+          ),
+
+          weekEnd: formatDateForInput(
+            report.weekEnd
+          ),
+
+          projectId:
+            report.projectId?._id ||
+            report.projectId ||
+            "",
+
+          tasks:
+            Array.isArray(report.tasks) &&
+            report.tasks.length > 0
+              ? report.tasks.map((task) => ({
+                  taskName:
+                    task.taskName || "",
+
+                  priority:
+                    task.priority ||
+                    "MEDIUM",
+
+                  plannedPercentage:
+                    task.plannedPercentage ??
+                    0,
+
+                  actualPercentage:
+                    task.actualPercentage ??
+                    0,
+
+                  status:
+                    task.status ||
+                    "NOT_STARTED",
+
+                  timePlanned:
+                    task.timePlanned ??
+                    0,
+
+                  timeSpent:
+                    task.timeSpent ??
+                    0,
+
+                  output:
+                    task.output || "",
+                }))
+              : [{ ...emptyTask }],
+
+          nextWeekTasks:
+            Array.isArray(
+              report.nextWeekTasks
+            ) &&
+            report.nextWeekTasks.length > 0
+              ? report.nextWeekTasks.map(
+                  (task) => task || ""
+                )
+              : [""],
+
+          blockers:
+            Array.isArray(report.blockers) &&
+            report.blockers.length > 0
+              ? report.blockers.map(
+                  (blocker) => ({
+                    description:
+                      blocker.description ||
+                      "",
+
+                    isKeyIssue: Boolean(
+                      blocker.isKeyIssue
+                    ),
+                  })
+                )
+              : [{ ...emptyBlocker }],
+
+          achievements:
+            Array.isArray(
+              report.achievements
+            ) &&
+            report.achievements.length > 0
+              ? report.achievements.map(
+                  (achievement) => ({
+                    description:
+                      achievement.description ||
+                      "",
+
+                    isKeyAchievement:
+                      Boolean(
+                        achievement.isKeyAchievement
+                      ),
+                  })
+                )
+              : [{ ...emptyAchievement }],
+
+          hours: {
+            development:
+              report.hours?.development ??
+              0,
+
+            testing:
+              report.hours?.testing ?? 0,
+
+            meetings:
+              report.hours?.meetings ?? 0,
+
+            research:
+              report.hours?.research ?? 0,
+
+            other:
+              report.hours?.other ?? 0,
+          },
+
+          notes: report.notes || "",
+        });
+      } catch (error) {
+        console.error(
+          "Failed to load report:",
+          error
+        );
+
+        if (mounted) {
+          showError(
+            error.response?.data?.message ||
+              "Failed to load report."
+          );
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    loadReport();
+
+    return () => {
+      mounted = false;
+    };
+  }, [id, navigate, showError]);
+
+  // =========================
+  // Generic Field Change
+  // =========================
+
   const handleChange = (e) => {
     const { name, value } = e.target;
 
@@ -103,9 +417,10 @@ const WeeklyReport = () => {
     }));
   };
 
-  /*
-   * Task field change.
-   */
+  // =========================
+  // Task Change
+  // =========================
+
   const handleTaskChange = (
     index,
     field,
@@ -126,12 +441,14 @@ const WeeklyReport = () => {
     });
   };
 
-  /*
-   * Add task.
-   */
+  // =========================
+  // Add Task
+  // =========================
+
   const addTask = () => {
     setForm((previous) => ({
       ...previous,
+
       tasks: [
         ...previous.tasks,
         {
@@ -141,9 +458,10 @@ const WeeklyReport = () => {
     }));
   };
 
-  /*
-   * Remove task.
-   */
+  // =========================
+  // Remove Task
+  // =========================
+
   const removeTask = (index) => {
     if (form.tasks.length === 1) {
       return;
@@ -151,15 +469,18 @@ const WeeklyReport = () => {
 
     setForm((previous) => ({
       ...previous,
+
       tasks: previous.tasks.filter(
-        (_, taskIndex) => taskIndex !== index
+        (_, taskIndex) =>
+          taskIndex !== index
       ),
     }));
   };
 
-  /*
-   * Next week task.
-   */
+  // =========================
+  // Next Week Task Change
+  // =========================
+
   const handleNextWeekTaskChange = (
     index,
     value
@@ -178,15 +499,24 @@ const WeeklyReport = () => {
     });
   };
 
+  // =========================
+  // Add Next Week Task
+  // =========================
+
   const addNextWeekTask = () => {
     setForm((previous) => ({
       ...previous,
+
       nextWeekTasks: [
         ...previous.nextWeekTasks,
         "",
       ],
     }));
   };
+
+  // =========================
+  // Remove Next Week Task
+  // =========================
 
   const removeNextWeekTask = (index) => {
     if (form.nextWeekTasks.length === 1) {
@@ -195,6 +525,7 @@ const WeeklyReport = () => {
 
     setForm((previous) => ({
       ...previous,
+
       nextWeekTasks:
         previous.nextWeekTasks.filter(
           (_, taskIndex) =>
@@ -203,16 +534,19 @@ const WeeklyReport = () => {
     }));
   };
 
-  /*
-   * Blocker changes.
-   */
+  // =========================
+  // Blocker Change
+  // =========================
+
   const handleBlockerChange = (
     index,
     field,
     value
   ) => {
     setForm((previous) => {
-      const blockers = [...previous.blockers];
+      const blockers = [
+        ...previous.blockers,
+      ];
 
       blockers[index] = {
         ...blockers[index],
@@ -226,18 +560,26 @@ const WeeklyReport = () => {
     });
   };
 
+  // =========================
+  // Add Blocker
+  // =========================
+
   const addBlocker = () => {
     setForm((previous) => ({
       ...previous,
+
       blockers: [
         ...previous.blockers,
         {
-          description: "",
-          isKeyIssue: false,
+          ...emptyBlocker,
         },
       ],
     }));
   };
+
+  // =========================
+  // Remove Blocker
+  // =========================
 
   const removeBlocker = (index) => {
     if (form.blockers.length === 1) {
@@ -246,6 +588,7 @@ const WeeklyReport = () => {
 
     setForm((previous) => ({
       ...previous,
+
       blockers: previous.blockers.filter(
         (_, blockerIndex) =>
           blockerIndex !== index
@@ -253,9 +596,10 @@ const WeeklyReport = () => {
     }));
   };
 
-  /*
-   * Achievement changes.
-   */
+  // =========================
+  // Achievement Change
+  // =========================
+
   const handleAchievementChange = (
     index,
     field,
@@ -278,18 +622,26 @@ const WeeklyReport = () => {
     });
   };
 
+  // =========================
+  // Add Achievement
+  // =========================
+
   const addAchievement = () => {
     setForm((previous) => ({
       ...previous,
+
       achievements: [
         ...previous.achievements,
         {
-          description: "",
-          isKeyAchievement: false,
+          ...emptyAchievement,
         },
       ],
     }));
   };
+
+  // =========================
+  // Remove Achievement
+  // =========================
 
   const removeAchievement = (index) => {
     if (form.achievements.length === 1) {
@@ -298,6 +650,7 @@ const WeeklyReport = () => {
 
     setForm((previous) => ({
       ...previous,
+
       achievements:
         previous.achievements.filter(
           (_, achievementIndex) =>
@@ -306,26 +659,59 @@ const WeeklyReport = () => {
     }));
   };
 
-  /*
-   * Hours.
-   */
+  // =========================
+  // Hours Change
+  // =========================
+
   const handleHoursChange = (
     field,
     value
   ) => {
+    const numericValue = Number(value);
+
     setForm((previous) => ({
       ...previous,
+
       hours: {
         ...previous.hours,
-        [field]: Number(value),
+
+        [field]: Number.isNaN(
+          numericValue
+        )
+          ? 0
+          : Math.max(0, numericValue),
       },
     }));
   };
 
+  // =========================
+  // Draft Validation
+  // =========================
+
   /*
-   * Validation.
+   * Drafts are intentionally allowed
+   * to be incomplete.
+   *
+   * Only validate the data structure
+   * needed to save safely.
    */
-  const validateForm = () => {
+  const validateDraft = () => {
+    if (
+      form.weekStart &&
+      form.weekEnd &&
+      form.weekStart > form.weekEnd
+    ) {
+      return "Week start date cannot be after week end date.";
+    }
+
+    return null;
+  };
+
+  // =========================
+  // Submit Validation
+  // =========================
+
+  const validateSubmitForm = () => {
     if (!form.weekStart) {
       return "Please select the week start date.";
     }
@@ -334,155 +720,313 @@ const WeeklyReport = () => {
       return "Please select the week end date.";
     }
 
+    if (form.weekStart > form.weekEnd) {
+      return "Week start date cannot be after week end date.";
+    }
+
     if (!form.projectId) {
       return "Please select a project.";
     }
 
-    if (form.tasks.length === 0) {
+    if (
+      !Array.isArray(form.tasks) ||
+      form.tasks.length === 0
+    ) {
       return "Please add at least one task.";
     }
 
     const invalidTask = form.tasks.some(
-      (task) => !task.taskName.trim()
+      (task) =>
+        !task.taskName ||
+        !task.taskName.trim()
     );
 
     if (invalidTask) {
       return "Every task must have a task name.";
     }
 
+    const invalidPercentages =
+      form.tasks.some(
+        (task) =>
+          Number(task.plannedPercentage) <
+            0 ||
+          Number(task.plannedPercentage) >
+            100 ||
+          Number(task.actualPercentage) <
+            0 ||
+          Number(task.actualPercentage) >
+            100
+      );
+
+    if (invalidPercentages) {
+      return "Task percentages must be between 0 and 100.";
+    }
+
     return null;
   };
 
-  /*
-   * Prepare API data.
-   */
+  // =========================
+  // Prepare API Data
+  // =========================
+
   const prepareData = () => {
     return {
       weekStart: form.weekStart,
+
       weekEnd: form.weekEnd,
+
       projectId: form.projectId,
 
       tasks: form.tasks.map((task) => ({
-        ...task,
-        plannedPercentage: Number(
-          task.plannedPercentage
+        taskName:
+          task.taskName?.trim() || "",
+
+        priority:
+          task.priority || "MEDIUM",
+
+        plannedPercentage: Math.min(
+          100,
+          Math.max(
+            0,
+            Number(
+              task.plannedPercentage
+            ) || 0
+          )
         ),
-        actualPercentage: Number(
-          task.actualPercentage
+
+        actualPercentage: Math.min(
+          100,
+          Math.max(
+            0,
+            Number(
+              task.actualPercentage
+            ) || 0
+          )
         ),
-        timePlanned: Number(
-          task.timePlanned
+
+        status:
+          task.status || "NOT_STARTED",
+
+        timePlanned: Math.max(
+          0,
+          Number(task.timePlanned) || 0
         ),
-        timeSpent: Number(
-          task.timeSpent
+
+        timeSpent: Math.max(
+          0,
+          Number(task.timeSpent) || 0
         ),
+
+        output:
+          task.output?.trim() || "",
       })),
 
       nextWeekTasks:
-        form.nextWeekTasks.filter(
-          (task) => task.trim()
-        ),
+        form.nextWeekTasks
+          .map((task) =>
+            typeof task === "string"
+              ? task.trim()
+              : ""
+          )
+          .filter(Boolean),
 
       blockers:
-        form.blockers.filter(
-          (blocker) =>
-            blocker.description.trim()
-        ),
+        form.blockers
+          .map((blocker) => ({
+            description:
+              blocker.description?.trim() ||
+              "",
+
+            isKeyIssue: Boolean(
+              blocker.isKeyIssue
+            ),
+          }))
+          .filter(
+            (blocker) =>
+              blocker.description
+          ),
 
       achievements:
-        form.achievements.filter(
-          (achievement) =>
-            achievement.description.trim()
+        form.achievements
+          .map((achievement) => ({
+            description:
+              achievement.description?.trim() ||
+              "",
+
+            isKeyAchievement:
+              Boolean(
+                achievement.isKeyAchievement
+              ),
+          }))
+          .filter(
+            (achievement) =>
+              achievement.description
+          ),
+
+      hours: {
+        development: Math.max(
+          0,
+          Number(
+            form.hours.development
+          ) || 0
         ),
 
-      hours: form.hours,
+        testing: Math.max(
+          0,
+          Number(form.hours.testing) || 0
+        ),
 
-      notes: form.notes,
+        meetings: Math.max(
+          0,
+          Number(form.hours.meetings) || 0
+        ),
+
+        research: Math.max(
+          0,
+          Number(form.hours.research) || 0
+        ),
+
+        other: Math.max(
+          0,
+          Number(form.hours.other) || 0
+        ),
+      },
+
+      notes:
+        form.notes?.trim() || "",
     };
   };
 
-  /*
-   * Save draft.
-   */
+  // =========================
+  // Save Draft
+  // =========================
+
   const handleSaveDraft = async () => {
-    setError("");
-    setMessage("");
+    if (saving) {
+      return;
+    }
 
     const validationError =
-      validateForm();
+      validateDraft();
 
     if (validationError) {
-      setError(validationError);
+      showError(validationError);
       return;
     }
 
     try {
-      setLoading(true);
+      setSaving(true);
 
       const data = prepareData();
 
       let savedReport;
 
+      /*
+       * Edit existing report.
+       */
       if (reportId) {
         savedReport = await updateReport(
           reportId,
           data
         );
-      } else {
+      }
+
+      /*
+       * Create new report.
+       */
+      else {
         savedReport =
           await createReport(data);
 
-        setReportId(savedReport._id);
+        /*
+         * Support both:
+         *
+         * response = report
+         *
+         * and:
+         *
+         * response = { report }
+         */
+        const createdReport =
+          savedReport?.report ||
+          savedReport;
+
+        setReportId(
+          createdReport?._id || null
+        );
       }
 
-      setMessage(
+      showSuccess(
         "Draft saved successfully."
       );
     } catch (error) {
-      setError(
+      console.error(
+        "Failed to save draft:",
+        error
+      );
+
+      showError(
         error.response?.data?.message ||
           "Failed to save draft."
       );
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
 
-  /*
-   * Submit report.
-   */
+  // =========================
+  // Submit Report
+  // =========================
+
   const handleSubmit = async () => {
-    setError("");
-    setMessage("");
+    if (saving) {
+      return;
+    }
 
     const validationError =
-      validateForm();
+      validateSubmitForm();
 
     if (validationError) {
-      setError(validationError);
+      showError(validationError);
       return;
     }
 
     try {
-      setLoading(true);
+      setSaving(true);
 
       const data = prepareData();
 
       let currentReportId = reportId;
 
       /*
-       * If report has not been saved yet,
+       * If no report exists yet,
        * create it first.
        */
       if (!currentReportId) {
-        const createdReport =
+        const createdResponse =
           await createReport(data);
 
+        const createdReport =
+          createdResponse?.report ||
+          createdResponse;
+
         currentReportId =
-          createdReport._id;
+          createdReport?._id;
+
+        if (!currentReportId) {
+          throw new Error(
+            "Report was created but no report ID was returned."
+          );
+        }
 
         setReportId(currentReportId);
-      } else {
+      }
+
+      /*
+       * If editing an existing report,
+       * update it before submitting.
+       */
+      else {
         await updateReport(
           currentReportId,
           data
@@ -490,92 +1034,137 @@ const WeeklyReport = () => {
       }
 
       /*
-       * Submit the report.
+       * Submit the saved report.
        */
       await submitReport(
         currentReportId
       );
 
-      setMessage(
+      showSuccess(
         "Report submitted successfully."
       );
 
+      /*
+       * Navigate after the toast has
+       * time to display.
+       */
       setTimeout(() => {
         navigate("/team/dashboard");
       }, 1000);
     } catch (error) {
-      setError(
+      console.error(
+        "Failed to submit report:",
+        error
+      );
+
+      showError(
         error.response?.data?.message ||
+          error.message ||
           "Failed to submit report."
       );
     } finally {
-      setLoading(false);
+      setSaving(false);
     }
   };
+
+  // =========================
+  // Initial Loading
+  // =========================
+
+  if (loading && isEditMode) {
+    return (
+      <div className="min-h-screen bg-slate-100 flex items-center justify-center px-4">
+        <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-8 text-center">
+          <div className="w-10 h-10 border-4 border-slate-200 border-t-indigo-600 rounded-full animate-spin mx-auto mb-4" />
+
+          <p className="text-slate-600 font-medium">
+            Loading report...
+          </p>
+        </div>
+      </div>
+    );
+  }
+
+  // =========================
+  // UI
+  // =========================
 
   return (
     <div className="min-h-screen bg-slate-100">
 
-      {/* Header */}
+      {/* =========================
+          Header
+      ========================= */}
+
       <header className="bg-white border-b border-slate-200">
+
         <div className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8">
 
-          <div className="h-16 flex items-center justify-between">
+          <div className="min-h-16 py-3 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
 
             <div>
               <h1 className="text-xl font-bold text-slate-900">
-                WeeklyReport
+                Weekly Report
               </h1>
 
               <p className="text-xs text-slate-500">
-                Weekly Report
+                Weekly Report Generator
               </p>
             </div>
 
             <button
+              type="button"
               onClick={() =>
                 navigate(
                   "/team/dashboard"
                 )
               }
-              className="px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50"
+              disabled={saving}
+              className="w-full sm:w-auto px-4 py-2 border border-slate-300 rounded-lg text-sm font-medium hover:bg-slate-50 disabled:opacity-50"
             >
               Back to Dashboard
             </button>
 
           </div>
+
         </div>
+
       </header>
 
-      {/* Content */}
+      {/* =========================
+          Main
+      ========================= */}
+
       <main className="max-w-6xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
 
+        {/* Page Title */}
+
         <div className="mb-8">
+
           <h2 className="text-2xl font-bold text-slate-900">
-            Weekly Report
+
+            {isEditMode
+              ? "Edit Weekly Report"
+              : "Create Weekly Report"}
+
           </h2>
 
           <p className="text-slate-500 mt-1">
-            Complete your weekly activity report.
+
+            {isEditMode
+              ? "Review and update your report before resubmitting."
+              : "Complete your weekly activity report."}
+
           </p>
+
         </div>
-
-        {/* Messages */}
-        {error && (
-          <div className="mb-6 rounded-lg border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-            {error}
-          </div>
-        )}
-
-        {message && (
-          <div className="mb-6 rounded-lg border border-green-200 bg-green-50 p-4 text-sm text-green-700">
-            {message}
-          </div>
-        )}
 
         <div className="space-y-6">
 
-          {/* Basic Information */}
+          {/* =========================
+              1. Report Information
+          ========================= */}
+
           <section className="bg-white rounded-xl border border-slate-200 p-6">
 
             <h3 className="text-lg font-bold text-slate-900 mb-5">
@@ -584,7 +1173,10 @@ const WeeklyReport = () => {
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
 
+              {/* Week Start */}
+
               <div>
+
                 <label className="block text-sm font-medium mb-2">
                   Week Start
                 </label>
@@ -594,11 +1186,16 @@ const WeeklyReport = () => {
                   name="weekStart"
                   value={form.weekStart}
                   onChange={handleChange}
-                  className="w-full border border-slate-300 rounded-lg p-3"
+                  disabled={saving}
+                  className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                 />
+
               </div>
 
+              {/* Week End */}
+
               <div>
+
                 <label className="block text-sm font-medium mb-2">
                   Week End
                 </label>
@@ -608,11 +1205,16 @@ const WeeklyReport = () => {
                   name="weekEnd"
                   value={form.weekEnd}
                   onChange={handleChange}
-                  className="w-full border border-slate-300 rounded-lg p-3"
+                  disabled={saving}
+                  className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                 />
+
               </div>
 
+              {/* Project */}
+
               <div>
+
                 <label className="block text-sm font-medium mb-2">
                   Project / Category
                 </label>
@@ -621,8 +1223,10 @@ const WeeklyReport = () => {
                   name="projectId"
                   value={form.projectId}
                   onChange={handleChange}
-                  className="w-full border border-slate-300 rounded-lg p-3 bg-white"
+                  disabled={saving}
+                  className="w-full border border-slate-300 rounded-lg p-3 bg-white outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                 >
+
                   <option value="">
                     Select project
                   </option>
@@ -637,18 +1241,25 @@ const WeeklyReport = () => {
                       </option>
                     )
                   )}
+
                 </select>
+
               </div>
 
             </div>
+
           </section>
 
-          {/* Tasks */}
+          {/* =========================
+              2. Tasks
+          ========================= */}
+
           <section className="bg-white rounded-xl border border-slate-200 p-6">
 
-            <div className="flex items-center justify-between mb-5">
+            <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 mb-5">
 
               <div>
+
                 <h3 className="text-lg font-bold">
                   2. Completed Tasks
                 </h3>
@@ -656,12 +1267,14 @@ const WeeklyReport = () => {
                 <p className="text-sm text-slate-500 mt-1">
                   Record your work and progress.
                 </p>
+
               </div>
 
               <button
                 type="button"
                 onClick={addTask}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold"
+                disabled={saving}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
               >
                 + Add Task
               </button>
@@ -692,7 +1305,8 @@ const WeeklyReport = () => {
                               index
                             )
                           }
-                          className="text-sm text-red-600"
+                          disabled={saving}
+                          className="text-sm text-red-600 hover:text-red-700 disabled:opacity-50"
                         >
                           Remove
                         </button>
@@ -702,7 +1316,10 @@ const WeeklyReport = () => {
 
                     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
 
+                      {/* Task Name */}
+
                       <div className="lg:col-span-2">
+
                         <label className="block text-sm font-medium mb-2">
                           Task Name
                         </label>
@@ -719,12 +1336,17 @@ const WeeklyReport = () => {
                               e.target.value
                             )
                           }
+                          disabled={saving}
                           placeholder="e.g. Implement login API"
-                          className="w-full border border-slate-300 rounded-lg p-3"
+                          className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                         />
+
                       </div>
 
+                      {/* Priority */}
+
                       <div>
+
                         <label className="block text-sm font-medium mb-2">
                           Priority
                         </label>
@@ -740,8 +1362,10 @@ const WeeklyReport = () => {
                               e.target.value
                             )
                           }
-                          className="w-full border border-slate-300 rounded-lg p-3 bg-white"
+                          disabled={saving}
+                          className="w-full border border-slate-300 rounded-lg p-3 bg-white outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                         >
+
                           <option value="LOW">
                             Low
                           </option>
@@ -757,10 +1381,15 @@ const WeeklyReport = () => {
                           <option value="CRITICAL">
                             Critical
                           </option>
+
                         </select>
+
                       </div>
 
+                      {/* Status */}
+
                       <div>
+
                         <label className="block text-sm font-medium mb-2">
                           Status
                         </label>
@@ -776,8 +1405,10 @@ const WeeklyReport = () => {
                               e.target.value
                             )
                           }
-                          className="w-full border border-slate-300 rounded-lg p-3 bg-white"
+                          disabled={saving}
+                          className="w-full border border-slate-300 rounded-lg p-3 bg-white outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                         >
+
                           <option value="NOT_STARTED">
                             Not Started
                           </option>
@@ -793,10 +1424,15 @@ const WeeklyReport = () => {
                           <option value="BLOCKED">
                             Blocked
                           </option>
+
                         </select>
+
                       </div>
 
+                      {/* Planned */}
+
                       <div>
+
                         <label className="block text-sm font-medium mb-2">
                           Planned %
                         </label>
@@ -815,11 +1451,16 @@ const WeeklyReport = () => {
                               e.target.value
                             )
                           }
-                          className="w-full border border-slate-300 rounded-lg p-3"
+                          disabled={saving}
+                          className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                         />
+
                       </div>
 
+                      {/* Actual */}
+
                       <div>
+
                         <label className="block text-sm font-medium mb-2">
                           Actual %
                         </label>
@@ -838,11 +1479,16 @@ const WeeklyReport = () => {
                               e.target.value
                             )
                           }
-                          className="w-full border border-slate-300 rounded-lg p-3"
+                          disabled={saving}
+                          className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                         />
+
                       </div>
 
+                      {/* Time Planned */}
+
                       <div>
+
                         <label className="block text-sm font-medium mb-2">
                           Time Planned
                         </label>
@@ -861,11 +1507,16 @@ const WeeklyReport = () => {
                               e.target.value
                             )
                           }
-                          className="w-full border border-slate-300 rounded-lg p-3"
+                          disabled={saving}
+                          className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                         />
+
                       </div>
 
+                      {/* Time Spent */}
+
                       <div>
+
                         <label className="block text-sm font-medium mb-2">
                           Time Spent
                         </label>
@@ -884,11 +1535,16 @@ const WeeklyReport = () => {
                               e.target.value
                             )
                           }
-                          className="w-full border border-slate-300 rounded-lg p-3"
+                          disabled={saving}
+                          className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                         />
+
                       </div>
 
+                      {/* Output */}
+
                       <div className="md:col-span-2 lg:col-span-4">
+
                         <label className="block text-sm font-medium mb-2">
                           Output / Deliverable
                         </label>
@@ -905,9 +1561,11 @@ const WeeklyReport = () => {
                               e.target.value
                             )
                           }
+                          disabled={saving}
                           placeholder="Describe the output or deliverable..."
-                          className="w-full border border-slate-300 rounded-lg p-3"
+                          className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                         />
+
                       </div>
 
                     </div>
@@ -916,12 +1574,16 @@ const WeeklyReport = () => {
               )}
 
             </div>
+
           </section>
 
-          {/* Next Week */}
+          {/* =========================
+              3. Next Week
+          ========================= */}
+
           <section className="bg-white rounded-xl border border-slate-200 p-6">
 
-            <div className="flex justify-between items-center mb-5">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
 
               <h3 className="text-lg font-bold">
                 3. Next-Week Tasks
@@ -930,7 +1592,8 @@ const WeeklyReport = () => {
               <button
                 type="button"
                 onClick={addNextWeekTask}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold"
+                disabled={saving}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
               >
                 + Add Task
               </button>
@@ -943,8 +1606,9 @@ const WeeklyReport = () => {
                 (task, index) => (
                   <div
                     key={index}
-                    className="flex gap-3"
+                    className="flex flex-col sm:flex-row gap-3"
                   >
+
                     <input
                       type="text"
                       value={task}
@@ -954,8 +1618,9 @@ const WeeklyReport = () => {
                           e.target.value
                         )
                       }
+                      disabled={saving}
                       placeholder="Next week's planned task..."
-                      className="flex-1 border border-slate-300 rounded-lg p-3"
+                      className="flex-1 border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                     />
 
                     {form.nextWeekTasks.length >
@@ -967,22 +1632,28 @@ const WeeklyReport = () => {
                             index
                           )
                         }
-                        className="px-3 text-red-600"
+                        disabled={saving}
+                        className="px-3 text-red-600 hover:text-red-700 disabled:opacity-50"
                       >
                         Remove
                       </button>
                     )}
+
                   </div>
                 )
               )}
 
             </div>
+
           </section>
 
-          {/* Blockers */}
+          {/* =========================
+              4. Blockers
+          ========================= */}
+
           <section className="bg-white rounded-xl border border-slate-200 p-6">
 
-            <div className="flex justify-between items-center mb-5">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
 
               <h3 className="text-lg font-bold">
                 4. Blockers / Challenges
@@ -991,7 +1662,8 @@ const WeeklyReport = () => {
               <button
                 type="button"
                 onClick={addBlocker}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold"
+                disabled={saving}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
               >
                 + Add Blocker
               </button>
@@ -1019,11 +1691,13 @@ const WeeklyReport = () => {
                           e.target.value
                         )
                       }
+                      disabled={saving}
                       placeholder="Describe a blocker or challenge..."
-                      className="flex-1 w-full border border-slate-300 rounded-lg p-3"
+                      className="flex-1 w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                     />
 
-                    <label className="flex items-center gap-2 text-sm whitespace-nowrap">
+                    <label className="flex items-center gap-2 text-sm whitespace-nowrap pt-3">
+
                       <input
                         type="checkbox"
                         checked={
@@ -1036,9 +1710,11 @@ const WeeklyReport = () => {
                             e.target.checked
                           )
                         }
+                        disabled={saving}
                       />
 
                       Key Issue
+
                     </label>
 
                     {form.blockers.length >
@@ -1050,7 +1726,8 @@ const WeeklyReport = () => {
                             index
                           )
                         }
-                        className="text-red-600 text-sm"
+                        disabled={saving}
+                        className="text-red-600 text-sm pt-3 disabled:opacity-50"
                       >
                         Remove
                       </button>
@@ -1061,12 +1738,16 @@ const WeeklyReport = () => {
               )}
 
             </div>
+
           </section>
 
-          {/* Achievements */}
+          {/* =========================
+              5. Achievements
+          ========================= */}
+
           <section className="bg-white rounded-xl border border-slate-200 p-6">
 
-            <div className="flex justify-between items-center mb-5">
+            <div className="flex flex-col sm:flex-row sm:justify-between sm:items-center gap-3 mb-5">
 
               <h3 className="text-lg font-bold">
                 5. Achievements / Highlights
@@ -1075,7 +1756,8 @@ const WeeklyReport = () => {
               <button
                 type="button"
                 onClick={addAchievement}
-                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold"
+                disabled={saving}
+                className="px-4 py-2 bg-indigo-600 text-white rounded-lg text-sm font-semibold hover:bg-indigo-700 disabled:opacity-50"
               >
                 + Add Achievement
               </button>
@@ -1103,11 +1785,13 @@ const WeeklyReport = () => {
                           e.target.value
                         )
                       }
+                      disabled={saving}
                       placeholder="Describe an achievement..."
-                      className="flex-1 w-full border border-slate-300 rounded-lg p-3"
+                      className="flex-1 w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                     />
 
-                    <label className="flex items-center gap-2 text-sm whitespace-nowrap">
+                    <label className="flex items-center gap-2 text-sm whitespace-nowrap pt-3">
+
                       <input
                         type="checkbox"
                         checked={
@@ -1120,9 +1804,11 @@ const WeeklyReport = () => {
                             e.target.checked
                           )
                         }
+                        disabled={saving}
                       />
 
                       Key Achievement
+
                     </label>
 
                     {form.achievements.length >
@@ -1134,7 +1820,8 @@ const WeeklyReport = () => {
                             index
                           )
                         }
-                        className="text-red-600 text-sm"
+                        disabled={saving}
+                        className="text-red-600 text-sm pt-3 disabled:opacity-50"
                       >
                         Remove
                       </button>
@@ -1145,9 +1832,13 @@ const WeeklyReport = () => {
               )}
 
             </div>
+
           </section>
 
-          {/* Hours */}
+          {/* =========================
+              6. Hours
+          ========================= */}
+
           <section className="bg-white rounded-xl border border-slate-200 p-6">
 
             <h3 className="text-lg font-bold mb-5">
@@ -1157,14 +1848,27 @@ const WeeklyReport = () => {
             <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
 
               {[
-                ["development", "Development"],
-                ["testing", "Testing"],
-                ["meetings", "Meetings"],
-                ["research", "Research"],
+                [
+                  "development",
+                  "Development",
+                ],
+                [
+                  "testing",
+                  "Testing",
+                ],
+                [
+                  "meetings",
+                  "Meetings",
+                ],
+                [
+                  "research",
+                  "Research",
+                ],
                 ["other", "Other"],
               ].map(
                 ([field, label]) => (
                   <div key={field}>
+
                     <label className="block text-sm font-medium mb-2">
                       {label}
                     </label>
@@ -1182,16 +1886,22 @@ const WeeklyReport = () => {
                           e.target.value
                         )
                       }
-                      className="w-full border border-slate-300 rounded-lg p-3"
+                      disabled={saving}
+                      className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
                     />
+
                   </div>
                 )
               )}
 
             </div>
+
           </section>
 
-          {/* Notes */}
+          {/* =========================
+              7. Notes
+          ========================= */}
+
           <section className="bg-white rounded-xl border border-slate-200 p-6">
 
             <h3 className="text-lg font-bold mb-5">
@@ -1203,16 +1913,22 @@ const WeeklyReport = () => {
               rows="5"
               value={form.notes}
               onChange={handleChange}
+              disabled={saving}
               placeholder="Add optional notes, links, references, or additional information..."
-              className="w-full border border-slate-300 rounded-lg p-3"
+              className="w-full border border-slate-300 rounded-lg p-3 outline-none focus:ring-2 focus:ring-indigo-500 disabled:bg-slate-100"
             />
 
           </section>
 
-          {/* Actions */}
+          {/* =========================
+              Actions
+          ========================= */}
+
           <section className="bg-white rounded-xl border border-slate-200 p-6">
 
-            <div className="flex flex-col sm:flex-row justify-end gap-3">
+            <div className="flex flex-col sm:flex-row sm:justify-end gap-3">
+
+              {/* Cancel */}
 
               <button
                 type="button"
@@ -1221,31 +1937,42 @@ const WeeklyReport = () => {
                     "/team/dashboard"
                   )
                 }
-                className="px-5 py-3 border border-slate-300 rounded-lg font-semibold hover:bg-slate-50"
+                disabled={saving}
+                className="px-5 py-3 border border-slate-300 rounded-lg font-semibold hover:bg-slate-50 disabled:opacity-50"
               >
                 Cancel
               </button>
 
-              <button
-                type="button"
-                disabled={loading}
-                onClick={handleSaveDraft}
-                className="px-5 py-3 border border-indigo-600 text-indigo-600 rounded-lg font-semibold hover:bg-indigo-50 disabled:opacity-50"
-              >
-                {loading
-                  ? "Saving..."
-                  : "Save Draft"}
-              </button>
+              {/* Save Draft */}
 
               <button
                 type="button"
-                disabled={loading}
+                disabled={saving}
+                onClick={handleSaveDraft}
+                className="px-5 py-3 border border-indigo-600 text-indigo-600 rounded-lg font-semibold hover:bg-indigo-50 disabled:opacity-50"
+              >
+
+                {saving
+                  ? "Saving..."
+                  : "Save Draft"}
+
+              </button>
+
+              {/* Submit */}
+
+              <button
+                type="button"
+                disabled={saving}
                 onClick={handleSubmit}
                 className="px-5 py-3 bg-indigo-600 text-white rounded-lg font-semibold hover:bg-indigo-700 disabled:opacity-50"
               >
-                {loading
+
+                {saving
                   ? "Submitting..."
+                  : isEditMode
+                  ? "Resubmit Report"
                   : "Submit Report"}
+
               </button>
 
             </div>

@@ -1,83 +1,80 @@
+/* eslint-disable react-hooks/immutability */
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-// import api from "../../services/api";
+
 import { useAuth } from "../../context/AuthContext";
 import { getMyReports } from "../../services/reportService";
+import { useToast } from "../../context/ToastContext";
 
 const TeamDashboard = () => {
   const navigate = useNavigate();
   const { user, logout } = useAuth();
+  const { showError } = useToast();
+
   const [reports, setReports] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
 
-  /*
-   * Temporary dashboard data.
-   *
-   * We will replace this with the real API
-   * when we build the Report model in Phase 3.
-   */
-  // useEffect(() => {
-  //   const loadReports = async () => {
-  //     try {
-  //       setLoading(true);
+  const [summary, setSummary] = useState({
+    total: 0,
+    draft: 0,
+    submitted: 0,
+    needsCorrection: 0,
+    approved: 0,
+  });
 
-  //       Temporary:
-  //       const response = await api.get("/reports/my-reports");
-  //       setReports(response.data.data);
+  // -----------------------------------------
+  // Current week calculation
+  // -----------------------------------------
+  const getCurrentWeek = () => {
+    const today = new Date();
 
-  //       setReports([
-  //         {
-  //           id: 1,
-  //           week: "Aug 24 - Aug 30, 2026",
-  //           project: "Weekly Report Dashboard",
-  //           status: "SUBMITTED",
-  //         },
-  //         {
-  //           id: 2,
-  //           week: "Aug 17 - Aug 23, 2026",
-  //           project: "Weather Analytics",
-  //           status: "APPROVED",
-  //         },
-  //         {
-  //           id: 3,
-  //           week: "Aug 10 - Aug 16, 2026",
-  //           project: "Weather Analytics",
-  //           status: "NEEDS_CORRECTION",
-  //         },
-  //       ]);
-  //     } catch (error) {
-  //       console.error("Failed to load reports:", error);
-  //     } finally {
-  //       setLoading(false);
-  //     }
-  //   };
+    const day = today.getDay();
 
-  //   loadReports();
-  // }, []);
+    // Monday = 1
+    // Sunday = 0
+    const diffToMonday = day === 0 ? -6 : 1 - day;
 
+    const monday = new Date(today);
+    monday.setHours(0, 0, 0, 0);
+    monday.setDate(today.getDate() + diffToMonday);
 
-  useEffect(() => {
-  const loadReports = async () => {
-    try {
-      setLoading(true);
+    const sunday = new Date(monday);
+    sunday.setDate(monday.getDate() + 6);
+    sunday.setHours(23, 59, 59, 999);
 
-      const data = await getMyReports();
-
-      setReports(data);
-    } catch (error) {
-      console.error(
-        "Failed to load reports:",
-        error
-      );
-    } finally {
-      setLoading(false);
-    }
+    return {
+      start: monday,
+      end: sunday,
+    };
   };
 
-  loadReports();
-}, []);
+  const currentWeek = getCurrentWeek();
 
+  // -----------------------------------------
+  // Format date
+  // -----------------------------------------
+  const formatDate = (date) => {
+    if (!date) return "-";
 
+    return new Date(date).toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  const formatShortDate = (date) => {
+    if (!date) return "-";
+
+    return new Date(date).toLocaleDateString("en-US", {
+      month: "short",
+      day: "numeric",
+    });
+  };
+
+  // -----------------------------------------
+  // Status styles
+  // -----------------------------------------
   const getStatusStyle = (status) => {
     switch (status) {
       case "APPROVED":
@@ -97,23 +94,98 @@ const TeamDashboard = () => {
     }
   };
 
+  // -----------------------------------------
+  // Status text
+  // -----------------------------------------
   const formatStatus = (status) => {
+    if (!status) return "Unknown";
+
     return status
       .replaceAll("_", " ")
       .toLowerCase()
       .replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
-  const formatDate = (date) => {
-    if (!date) return "-";
+  // -----------------------------------------
+  // Check whether report belongs to current week
+  // -----------------------------------------
+  const isCurrentWeekReport = (report) => {
+    if (!report?.weekStart || !report?.weekEnd) {
+      return false;
+    }
 
-    return new Date(date).toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "short",
-      day: "numeric",
-    });
+    const reportStart = new Date(report.weekStart);
+    const reportEnd = new Date(report.weekEnd);
+
+    reportStart.setHours(0, 0, 0, 0);
+    reportEnd.setHours(23, 59, 59, 999);
+
+    return (
+      reportStart.getTime() === currentWeek.start.getTime() &&
+      reportEnd.getTime() === currentWeek.end.getTime()
+    );
   };
 
+  // -----------------------------------------
+  // Load dashboard data
+  // -----------------------------------------
+  useEffect(() => {
+    const loadDashboardData = async () => {
+      try {
+        setLoading(true);
+
+        const data = await getMyReports();
+
+        setReports(data);
+
+        setSummary({
+          total: data.length,
+
+          draft: data.filter(
+            (report) => report.status === "DRAFT"
+          ).length,
+
+          submitted: data.filter(
+            (report) => report.status === "SUBMITTED"
+          ).length,
+
+          needsCorrection: data.filter(
+            (report) => report.status === "NEEDS_CORRECTION"
+          ).length,
+
+          approved: data.filter(
+            (report) => report.status === "APPROVED"
+          ).length,
+        });
+      } catch (error) {
+        console.error(
+          "Failed to load dashboard data:",
+          error
+        );
+
+        showError(
+          error.response?.data?.message ||
+            "Failed to load dashboard data."
+        );
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    loadDashboardData();
+  }, [showError]);
+
+  // -----------------------------------------
+  // Find current week's report
+  // -----------------------------------------
+  const currentWeekReport =
+    reports.find((report) =>
+      isCurrentWeekReport(report)
+    ) || null;
+
+  // -----------------------------------------
+  // Logout
+  // -----------------------------------------
   const handleLogout = () => {
     logout();
     navigate("/login");
@@ -154,7 +226,7 @@ const TeamDashboard = () => {
 
               <button
                 onClick={handleLogout}
-                className="px-4 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50"
+                className="px-4 py-2 text-sm font-medium text-slate-700 border border-slate-300 rounded-lg hover:bg-slate-50 transition"
               >
                 Logout
               </button>
@@ -191,20 +263,20 @@ const TeamDashboard = () => {
         </div>
 
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5 mb-8">
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-5 mb-8">
 
-          {/* Current Week */}
+          {/* Total Reports */}
           <div className="bg-white rounded-xl border border-slate-200 p-5">
             <p className="text-sm text-slate-500">
-              Current Week
+              Total Reports
             </p>
 
-            <p className="text-xl font-bold text-slate-900 mt-2">
-              Aug 31 - Sep 6
+            <p className="text-3xl font-bold text-slate-900 mt-2">
+              {summary.total}
             </p>
 
             <p className="text-xs text-slate-500 mt-1">
-              2026
+              All your reports
             </p>
           </div>
 
@@ -214,12 +286,12 @@ const TeamDashboard = () => {
               Submitted
             </p>
 
-            <p className="text-3xl font-bold text-slate-900 mt-2">
-              2
+            <p className="text-3xl font-bold text-blue-600 mt-2">
+              {summary.submitted}
             </p>
 
             <p className="text-xs text-slate-500 mt-1">
-              Previous reports
+              Awaiting review
             </p>
           </div>
 
@@ -230,7 +302,7 @@ const TeamDashboard = () => {
             </p>
 
             <p className="text-3xl font-bold text-orange-600 mt-2">
-              1
+              {summary.needsCorrection}
             </p>
 
             <p className="text-xs text-slate-500 mt-1">
@@ -245,17 +317,32 @@ const TeamDashboard = () => {
             </p>
 
             <p className="text-3xl font-bold text-green-600 mt-2">
-              1
+              {summary.approved}
             </p>
 
             <p className="text-xs text-slate-500 mt-1">
-              Reports approved
+              Completed
+            </p>
+          </div>
+
+          {/* Drafts */}
+          <div className="bg-white rounded-xl border border-slate-200 p-5">
+            <p className="text-sm text-slate-500">
+              Drafts
+            </p>
+
+            <p className="text-3xl font-bold text-slate-700 mt-2">
+              {summary.draft}
+            </p>
+
+            <p className="text-xs text-slate-500 mt-1">
+              Not submitted
             </p>
           </div>
 
         </div>
 
-        {/* Current Week */}
+        {/* Current Week Report */}
         <div className="bg-white rounded-xl border border-slate-200 p-6 mb-8">
 
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
@@ -266,33 +353,147 @@ const TeamDashboard = () => {
               </h3>
 
               <p className="text-sm text-slate-500 mt-1">
-                Aug 31 - Sep 6, 2026
+                {formatShortDate(currentWeek.start)}
+                {" - "}
+                {formatShortDate(currentWeek.end)}
+                {", "}
+                {currentWeek.start.getFullYear()}
               </p>
             </div>
 
-            <span className="px-3 py-1 rounded-full text-sm font-medium bg-gray-100 text-gray-700">
-              Not Started
-            </span>
+            {/* Current report status */}
+            {currentWeekReport ? (
+              <span
+                className={`px-3 py-1 rounded-full text-sm font-semibold ${getStatusStyle(
+                  currentWeekReport.status
+                )}`}
+              >
+                {formatStatus(currentWeekReport.status)}
+              </span>
+            ) : (
+              <span className="px-3 py-1 rounded-full text-sm font-semibold bg-gray-100 text-gray-700">
+                Not Started
+              </span>
+            )}
 
           </div>
 
-          <div className="mt-6 flex flex-col sm:flex-row gap-3">
+          {/* Current report information */}
+          {currentWeekReport ? (
+            <div className="mt-6">
 
-            <button
-              onClick={() => navigate("/team/report")}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700"
-            >
-              Start Report
-            </button>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
 
-            <button
-              onClick={() => navigate("/team/reports")}
-              className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50"
-            >
-              View History
-            </button>
+                {/* Project */}
+                <div className="bg-slate-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-500">
+                    Project
+                  </p>
 
-          </div>
+                  <p className="font-semibold text-slate-900 mt-1">
+                    {currentWeekReport.projectId?.name ||
+                      "Unknown Project"}
+                  </p>
+                </div>
+
+                {/* Last Updated */}
+                <div className="bg-slate-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-500">
+                    Last Updated
+                  </p>
+
+                  <p className="font-semibold text-slate-900 mt-1">
+                    {formatDate(
+                      currentWeekReport.updatedAt
+                    )}
+                  </p>
+                </div>
+
+                {/* Tasks */}
+                <div className="bg-slate-50 rounded-lg p-4">
+                  <p className="text-xs text-slate-500">
+                    Tasks
+                  </p>
+
+                  <p className="font-semibold text-slate-900 mt-1">
+                    {currentWeekReport.tasks?.length || 0}
+                  </p>
+                </div>
+
+              </div>
+
+              {/* Correction message */}
+              {currentWeekReport.status ===
+                "NEEDS_CORRECTION" && (
+                <div className="mt-5 p-4 bg-orange-50 border border-orange-200 rounded-lg">
+
+                  <p className="font-semibold text-orange-800">
+                    Action Required
+                  </p>
+
+                  <p className="text-sm text-orange-700 mt-1">
+                    Your report needs correction before it can
+                    be approved.
+                  </p>
+
+                </div>
+              )}
+
+              {/* Actions */}
+              <div className="mt-5 flex flex-col sm:flex-row gap-3">
+
+                <button
+                  onClick={() =>
+                    navigate(
+                      `/team/reports/${currentWeekReport._id}`
+                    )
+                  }
+                  className="px-4 py-2 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition"
+                >
+                  View Report
+                </button>
+
+                {(currentWeekReport.status === "DRAFT" ||
+                  currentWeekReport.status ===
+                    "NEEDS_CORRECTION") && (
+                  <button
+                    onClick={() =>
+                      navigate(
+                        `/team/report/${currentWeekReport._id}`
+                      )
+                    }
+                    className="px-4 py-2 border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-slate-50 transition"
+                  >
+                    Edit Report
+                  </button>
+                )}
+
+              </div>
+
+            </div>
+          ) : (
+            /* No report for current week */
+            <div className="mt-6">
+
+              <div className="bg-slate-50 rounded-lg p-6 text-center">
+
+                <p className="text-slate-600">
+                  You haven't created your weekly report yet.
+                </p>
+
+                <button
+                  onClick={() =>
+                    navigate("/team/report")
+                  }
+                  className="mt-4 px-5 py-2.5 bg-indigo-600 text-white rounded-lg font-medium hover:bg-indigo-700 transition"
+                >
+                  Start Report
+                </button>
+
+              </div>
+
+            </div>
+          )}
 
         </div>
 
@@ -312,7 +513,9 @@ const TeamDashboard = () => {
             </div>
 
             <button
-              onClick={() => navigate("/team/reports")}
+              onClick={() =>
+                navigate("/team/reports")
+              }
               className="text-sm font-semibold text-indigo-600 hover:text-indigo-700"
             >
               View All
@@ -321,7 +524,7 @@ const TeamDashboard = () => {
           </div>
 
           {loading ? (
-            <div className="p-6 text-center text-slate-500">
+            <div className="p-8 text-center text-slate-500">
               Loading reports...
             </div>
           ) : reports.length === 0 ? (
@@ -332,8 +535,10 @@ const TeamDashboard = () => {
               </p>
 
               <button
-                onClick={() => navigate("/team/report")}
-                className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg"
+                onClick={() =>
+                  navigate("/team/report")
+                }
+                className="mt-4 px-4 py-2 bg-indigo-600 text-white rounded-lg hover:bg-indigo-700"
               >
                 Create Your First Report
               </button>
@@ -342,21 +547,29 @@ const TeamDashboard = () => {
           ) : (
             <div className="divide-y divide-slate-200">
 
-              {reports.map((report) => (
+              {reports.slice(0, 5).map((report) => (
                 <div
                   key={report._id}
-                  className="p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-slate-50"
+                  className="p-6 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 hover:bg-slate-50 transition"
                 >
 
                   <div>
+
                     <p className="font-semibold text-slate-900">
-                      {report.projectId?.name || "Unknown Project"}
+                      {report.projectId?.name ||
+                        "Unknown Project"}
                     </p>
 
                     <p className="text-sm text-slate-500 mt-1">
-                      {report.week}
-                      {formatDate(report.weekStart)} - {formatDate(report.weekEnd)}
+                      {formatDate(report.weekStart)}
+                      {" - "}
+                      {formatDate(report.weekEnd)}
                     </p>
+
+                    <p className="text-xs text-slate-400 mt-1">
+                      Updated {formatDate(report.updatedAt)}
+                    </p>
+
                   </div>
 
                   <div className="flex items-center gap-4">
@@ -366,12 +579,14 @@ const TeamDashboard = () => {
                         report.status
                       )}`}
                     >
-                      {formatStatus(report.status)} 
+                      {formatStatus(report.status)}
                     </span>
 
                     <button
                       onClick={() =>
-                        navigate(`/team/reports/${report._id}`)
+                        navigate(
+                          `/team/reports/${report._id}`
+                        )
                       }
                       className="text-sm font-semibold text-indigo-600 hover:text-indigo-700"
                     >

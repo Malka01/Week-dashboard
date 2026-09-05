@@ -1,10 +1,12 @@
+/* eslint-disable react-hooks/set-state-in-effect */
 /* eslint-disable react-hooks/static-components */
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 
 import { getAllAdminReports } from "../../services/adminReportService";
 import { getProjects } from "../../services/projectService";
-import { useAuth } from "../../context/AuthContext";
+// import { useAuth } from "../../context/AuthContext";
+import { getUsers } from "../../services/userService";
 
 import {
   BarChart,
@@ -27,14 +29,14 @@ import { getDashboardAnalytics } from "../../services/analyticsService";
 
 // Status helpers
 const statusStyles = {
-  DRAFT: "bg-slate-100 text-slate-700",
+  // DRAFT: "bg-slate-100 text-slate-700",
   SUBMITTED: "bg-blue-100 text-blue-700",
   NEEDS_CORRECTION: "bg-orange-100 text-orange-700",
   APPROVED: "bg-green-100 text-green-700",
 };
 
 const statusLabels = {
-  DRAFT: "Draft",
+  // DRAFT: "Draft",
   SUBMITTED: "Submitted",
   NEEDS_CORRECTION: "Needs Correction",
   APPROVED: "Approved",
@@ -42,15 +44,35 @@ const statusLabels = {
 
 // Status colour map for pie chart
 const statusColours = {
-  DRAFT: "#94a3b8",
+  // DRAFT: "#94a3b8",
   SUBMITTED: "#3b82f6",
   NEEDS_CORRECTION: "#f97316",
   APPROVED: "#22c55e",
 };
 
+
+const activityLabels = {
+  SUBMITTED: "submitted a report",
+  RESUBMITTED: "resubmitted a report",
+  REQUESTED_CORRECTION: "requested a correction",
+  APPROVED: "approved a report",
+};
+
+const formatActivityTime = (date) => {
+  if (!date) return "-";
+
+  return new Date(date).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
 const AdminDashboard = () => {
   const navigate = useNavigate();
-  const { user, logout } = useAuth();
+  // const { user, logout } = useAuth();
 
   const [analytics, setAnalytics] = useState(null);
   const [analyticsLoading, setAnalyticsLoading] = useState(true);
@@ -58,6 +80,7 @@ const AdminDashboard = () => {
 
   const [reports, setReports] = useState([]);
   const [projects, setProjects] = useState([]);
+  const [users, setUsers] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -144,52 +167,57 @@ const AdminDashboard = () => {
     }
   };
 
-  useEffect(() => {
-    // eslint-disable-next-line react-hooks/set-state-in-effect
-    loadAnalytics();
-    loadReports();
-    loadProjects();
-  }, [filters]);
+const loadUsers = async () => {
+  try {
+    const data = await getUsers({
+      role: "TEAM_MEMBER",
+      isActive: true,
+    });
+
+    setUsers(data);
+  } catch (error) {
+    console.error("Failed to load users:", error);
+  }
+};
+
+useEffect(() => {
+  loadProjects();
+  loadUsers();
+}, []);
+
+useEffect(() => {
+  loadAnalytics();
+  loadReports();
+}, [filters]);
 
   // --- Filter handlers ---
   const handleFilterChange = (e) => {
-    setFilters({
-      ...filters,
-      [e.target.name]: e.target.value,
-    });
-  };
+  const { name, value } = e.target;
 
-  const applyFilters = () => {
-    loadReports();
-  };
+  setFilters((previous) => ({
+    ...previous,
+    [name]: value,
+  }));
+};
 
   const clearFilters = () => {
-    const emptyFilters = {
-      status: "",
-      projectId: "",
-      userId: "",
-      startDate: "",
-      endDate: "",
-    };
-    setFilters(emptyFilters);
-    // small delay to allow state update before refetch
-    setTimeout(() => loadReports(), 0);
-  };
+  setFilters({
+    status: "",
+    projectId: "",
+    userId: "",
+    startDate: "",
+    endDate: "",
+  });
 
-  // --- Derived data ---
-  const uniqueMembers = useMemo(() => {
-    const members = new Map();
-    reports.forEach((report) => {
-      if (report.userId) {
-        members.set(report.userId._id, report.userId);
-      }
-    });
-    return Array.from(members.values());
-  }, [reports]);
+  setSearch("");
+};
+
 
   const filteredReports = useMemo(() => {
     const query = search.toLowerCase();
     return reports.filter((report) => {
+      if (report.status === "DRAFT") return false;
+
       const reportUserId = report.userId?._id || report.userId;
       const reportProjectId = report.projectId?._id || report.projectId;
       const memberName = report.userId?.name?.toLowerCase() || "";
@@ -225,11 +253,6 @@ const AdminDashboard = () => {
     });
   };
 
-  const handleLogout = () => {
-    logout();
-    navigate("/login");
-  };
-
   // --- Helper: loading skeleton for chart ---
   const ChartSkeleton = () => (
     <div className="h-80 flex items-center justify-center bg-slate-50 rounded-lg animate-pulse">
@@ -240,31 +263,6 @@ const AdminDashboard = () => {
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-50 to-slate-100">
 
-      {/* ---------- Navbar ---------- */}
-      <nav className="bg-white/80 backdrop-blur-sm border-b border-slate-200/60 sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-4 md:px-6 py-4 flex items-center justify-between">
-          <div>
-            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">
-              WeeklyReport
-            </h1>
-            <p className="text-xs text-slate-500 font-medium">
-              Admin / Manager Portal
-            </p>
-          </div>
-          <div className="flex items-center gap-4">
-            <div className="hidden sm:block text-right">
-              <p className="text-sm font-semibold text-slate-900">{user?.name}</p>
-              <p className="text-xs text-slate-500">Administrator</p>
-            </div>
-            <button
-              onClick={handleLogout}
-              className="px-4 py-2 text-sm font-medium text-slate-700 bg-white border border-slate-300 rounded-xl hover:bg-slate-50 hover:border-slate-400 transition-all duration-200 shadow-sm"
-            >
-              Logout
-            </button>
-          </div>
-        </div>
-      </nav>
 
       <main className="max-w-7xl mx-auto px-4 md:px-6 py-8 space-y-8">
 
@@ -279,7 +277,10 @@ const AdminDashboard = () => {
             </p>
           </div>
           <button
-            onClick={loadReports}
+            onClick={() => {
+            loadReports();
+            loadAnalytics();
+          }}
             className="px-5 py-2.5 bg-white border border-slate-200 rounded-xl shadow-sm hover:shadow-md transition-all duration-200 flex items-center gap-2 text-sm font-medium text-slate-700"
           >
             <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -290,13 +291,13 @@ const AdminDashboard = () => {
         </div>
 
         {/* ---------- Summary Cards ---------- */}
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-4">
           {[
             { label: "Total Reports", value: summary.total, colour: "text-slate-900" },
             { label: "Submitted", value: summary.submitted, colour: "text-blue-600" },
             { label: "Needs Correction", value: summary.needsCorrection, colour: "text-orange-600" },
             { label: "Approved", value: summary.approved, colour: "text-green-600" },
-            { label: "Draft", value: summary.draft, colour: "text-slate-600" },
+            // { label: "Draft", value: summary.draft, colour: "text-slate-600" },
           ].map((item, idx) => (
             <div
               key={idx}
@@ -306,6 +307,61 @@ const AdminDashboard = () => {
               <span className={`text-3xl font-bold ${item.colour}`}>{item.value}</span>
             </div>
           ))}
+        </div>
+        
+        {/* ---------- Weekly Compliance ---------- */}
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+            <p className="text-sm font-medium text-slate-500">
+              Submitted This Week
+            </p>
+
+            <p className="text-3xl font-bold text-blue-600 mt-2">
+              {analytics?.summary?.submittedThisWeek ?? 0}
+            </p>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+            <p className="text-sm font-medium text-slate-500">
+              Pending
+            </p>
+
+            <p className="text-3xl font-bold text-yellow-600 mt-2">
+              {analytics?.summary?.pending ?? 0}
+            </p>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+            <p className="text-sm font-medium text-slate-500">
+              Not Started
+            </p>
+
+            <p className="text-3xl font-bold text-slate-600 mt-2">
+              {analytics?.summary?.notStarted ?? 0}
+            </p>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+            <p className="text-sm font-medium text-slate-500">
+              Late
+            </p>
+
+            <p className="text-3xl font-bold text-red-600 mt-2">
+              {analytics?.summary?.late ?? 0}
+            </p>
+          </div>
+
+          <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-5">
+            <p className="text-sm font-medium text-slate-500">
+              Compliance
+            </p>
+
+            <p className="text-3xl font-bold text-green-600 mt-2">
+              {analytics?.summary?.compliancePercentage ?? 0}%
+            </p>
+          </div>
+
         </div>
 
         {/* ---------- Filters + Search ---------- */}
@@ -323,12 +379,12 @@ const AdminDashboard = () => {
                 onChange={(e) => setSearch(e.target.value)}
                 className="w-full sm:w-64 border border-slate-300 rounded-xl px-4 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 transition-all text-sm"
               />
-              <button
+              {/* <button
                 onClick={applyFilters}
                 className="px-5 py-2.5 bg-indigo-600 text-white rounded-xl hover:bg-indigo-700 font-medium transition-all shadow-sm hover:shadow-md text-sm"
               >
                 Apply Filters
-              </button>
+              </button> */}
               <button
                 onClick={clearFilters}
                 className="px-5 py-2.5 border border-slate-300 rounded-xl hover:bg-slate-50 transition-all text-sm font-medium text-slate-700"
@@ -346,9 +402,12 @@ const AdminDashboard = () => {
               className="border border-slate-300 rounded-xl px-4 py-2.5 bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all text-sm"
             >
               <option value="">All Members</option>
-              {uniqueMembers.map((member) => (
-                <option key={member._id} value={member._id}>
-                  {member.name}
+
+              {users
+                .filter((user) => user.role === "TEAM_MEMBER")
+              .map((user) => (
+                <option key={user._id} value={user._id}>
+                  {user.name}
                 </option>
               ))}
             </select>
@@ -374,7 +433,6 @@ const AdminDashboard = () => {
               className="border border-slate-300 rounded-xl px-4 py-2.5 bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all text-sm"
             >
               <option value="">All Statuses</option>
-              <option value="DRAFT">Draft</option>
               <option value="SUBMITTED">Submitted</option>
               <option value="NEEDS_CORRECTION">Needs Correction</option>
               <option value="APPROVED">Approved</option>
@@ -396,6 +454,168 @@ const AdminDashboard = () => {
               className="border border-slate-300 rounded-xl px-4 py-2.5 bg-white focus:ring-2 focus:ring-indigo-500/50 focus:border-indigo-500 outline-none transition-all text-sm"
             />
           </div>
+        </section>
+        
+
+        {/* ---------- Team Compliance ---------- */}
+        <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
+
+          <div className="p-5 border-b border-slate-200">
+
+            <h3 className="font-semibold text-slate-900">
+              Weekly Team Compliance
+            </h3>
+
+            <p className="text-sm text-slate-500 mt-1">
+              Submission status for active team members
+            </p>
+
+          </div>
+
+          <div className="overflow-x-auto">
+
+            <table className="min-w-full">
+
+              <thead className="bg-slate-50">
+
+                <tr>
+
+                  <th className="text-left text-xs font-semibold text-slate-500 uppercase px-6 py-4">
+                    Team Member
+                  </th>
+
+                  <th className="text-left text-xs font-semibold text-slate-500 uppercase px-6 py-4">
+                    Project
+                  </th>
+
+                  <th className="text-left text-xs font-semibold text-slate-500 uppercase px-6 py-4">
+                    Status
+                  </th>
+
+                  <th className="text-left text-xs font-semibold text-slate-500 uppercase px-6 py-4">
+                    Updated
+                  </th>
+
+                  <th className="text-right text-xs font-semibold text-slate-500 uppercase px-6 py-4">
+                    Action
+                  </th>
+
+                </tr>
+
+              </thead>
+
+              <tbody className="divide-y divide-slate-200">
+
+                {analytics?.teamCompliance?.map(
+                  (member) => {
+
+                    const complianceStyles = {
+                      SUBMITTED:
+                        "bg-blue-100 text-blue-700",
+
+                      APPROVED:
+                        "bg-green-100 text-green-700",
+
+                      NEEDS_CORRECTION:
+                        "bg-orange-100 text-orange-700",
+
+                      PENDING:
+                        "bg-yellow-100 text-yellow-700",
+
+                      NOT_STARTED:
+                        "bg-slate-100 text-slate-600",
+
+                      LATE:
+                        "bg-red-100 text-red-700",
+                    };
+
+                    const statusText = {
+                      SUBMITTED: "Submitted",
+                      APPROVED: "Approved",
+                      NEEDS_CORRECTION:
+                        "Needs Correction",
+                      PENDING: "Pending",
+                      NOT_STARTED: "Not Started",
+                      LATE: "Late",
+                    };
+
+                    return (
+                      <tr
+                        key={member.memberId}
+                        className="hover:bg-slate-50"
+                      >
+
+                        <td className="px-6 py-4">
+
+                          <p className="font-medium text-slate-900">
+                            {member.name}
+                          </p>
+
+                          <p className="text-xs text-slate-500">
+                            {member.email}
+                          </p>
+
+                        </td>
+
+                        <td className="px-6 py-4 text-sm text-slate-700">
+                          {member.projectName || "-"}
+                        </td>
+
+                        <td className="px-6 py-4">
+
+                          <span
+                            className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
+                              complianceStyles[
+                                member.status
+                              ] ||
+                              "bg-slate-100 text-slate-700"
+                            }`}
+                          >
+                            {statusText[
+                              member.status
+                            ] || member.status}
+                          </span>
+
+                        </td>
+
+                        <td className="px-6 py-4 text-sm text-slate-500">
+                          {formatDate(
+                            member.updatedAt
+                          )}
+                        </td>
+
+                        <td className="px-6 py-4 text-right">
+
+                          {member.reportId ? (
+                            <button
+                              onClick={() =>
+                                navigate(
+                                  `/admin/reports/${member.reportId}/review`
+                                )
+                              }
+                              className="px-4 py-2 text-sm bg-indigo-600 text-white rounded-xl hover:bg-indigo-700"
+                            >
+                              View
+                            </button>
+                          ) : (
+                            <span className="text-sm text-slate-400">
+                              No report
+                            </span>
+                          )}
+
+                        </td>
+
+                      </tr>
+                    );
+                  }
+                )}
+
+              </tbody>
+
+            </table>
+
+          </div>
+
         </section>
 
         {/* ---------- Analytics Section ---------- */}
@@ -546,13 +766,15 @@ const AdminDashboard = () => {
                       <div className="flex flex-col md:flex-row md:justify-between gap-2">
                         <div>
                           <p className="font-medium text-slate-900">
-                            {report.blockers?.description}
+                            {/* {report.blockers?.description} */}
+                            {report.blocker?.description}
                           </p>
                           <p className="text-sm text-slate-500 mt-1">
                             {report.userId?.name || "Unknown member"} · {report.projectId?.name || "No project"}
                           </p>
                         </div>
-                        {report.blockers?.isKeyIssue && (
+                        {/* {report.blockers?.isKeyIssue && ( */}
+                        {report.blocker?.isKeyIssue && (
                           <span className="self-start px-3 py-1 rounded-full text-xs font-semibold bg-red-100 text-red-700">
                             Key Issue
                           </span>
@@ -569,13 +791,144 @@ const AdminDashboard = () => {
             </div>
           </>
         )}
-        {analyticsError && (
-          <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-            <p className="text-sm text-red-600">
-              {analyticsError}
-            </p>
+        {/* ---------- Recent Activity ---------- */}
+        <div className="bg-white border border-slate-200 rounded-2xl shadow-sm p-6 transition-all hover:shadow-md">
+          <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">
+                Recent Activity
+              </h2>
+
+              <p className="text-sm text-slate-500 mt-1">
+                Latest report submissions and review actions
+              </p>
+            </div>
+
+            <span className="text-xs font-medium text-slate-400">
+              Last 10 activities
+            </span>
           </div>
-        )}
+
+          <div className="mt-5">
+            {analytics?.recentActivity?.length > 0 ? (
+              <div className="space-y-4">
+                {analytics.recentActivity.map((activity) => {
+                  const report = activity.reportId;
+                  // const memberName =
+                  //   activity.reviewerId?.name || "Admin";
+                  const actorName =
+                    activity.reviewerId?.name || "Administrator";
+                    // report?.userId?.name || "Unknown member";
+
+                    // const memberName =
+                    //   report?.userId?.name || "Unknown member";
+
+                  const projectName =
+                    report?.projectId?.name || "No project";
+
+                  const reviewerName =
+                    // activity.reviewerId?.name || "Administrator";
+                    report?.userId?.name || "Unknown member";
+
+                  const actionText =
+                    activityLabels[activity.action] ||
+                    activity.action;
+
+                  return (
+                    <div
+                      key={activity._id}
+                      className="flex gap-4 border border-slate-200 rounded-xl p-4 hover:bg-slate-50 transition-colors"
+                    >
+                      {/* Activity icon */}
+                      <div className="flex-shrink-0">
+                        <div className="w-10 h-10 rounded-full bg-indigo-100 flex items-center justify-center">
+                          <svg
+                            className="w-5 h-5 text-indigo-600"
+                            fill="none"
+                            stroke="currentColor"
+                            viewBox="0 0 24 24"
+                          >
+                            <path
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth={2}
+                              d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"
+                            />
+                          </svg>
+                        </div>
+                      </div>
+
+                      {/* Activity content */}
+                      <div className="min-w-0 flex-1">
+                        <p className="text-sm text-slate-800">
+                          <span className="font-semibold">
+                            {actorName}
+                          </span>{" "}
+                          {actionText}{" "}
+                          {/* <span className="font-semibold">
+                            {memberName}
+                          </span> */}
+                        </p>
+
+                        <p className="text-sm text-slate-500 mt-1">
+                          {projectName}
+                        </p>
+
+                        {activity.comment && (
+                          <div className="mt-2 bg-slate-50 border border-slate-200 rounded-lg px-3 py-2">
+                            <p className="text-xs text-slate-500">
+                              Comment
+                            </p>
+
+                            <p className="text-sm text-slate-700 mt-1">
+                              {activity.comment}
+                            </p>
+                          </div>
+                        )}
+
+                        <p className="text-xs text-slate-400 mt-2">
+                          {reviewerName} ·{" "}
+                          {formatActivityTime(activity.createdAt)}
+                        </p>
+                      </div>
+
+                      {/* Action badge */}
+                      <div className="flex-shrink-0">
+                        <span
+                          className={`inline-flex px-3 py-1 rounded-full text-xs font-semibold ${
+                            activity.action === "APPROVED"
+                              ? "bg-green-100 text-green-700"
+                              : activity.action ===
+                                "REQUESTED_CORRECTION"
+                              ? "bg-orange-100 text-orange-700"
+                              : activity.action ===
+                                "RESUBMITTED"
+                              ? "bg-purple-100 text-purple-700"
+                              : "bg-blue-100 text-blue-700"
+                          }`}
+                        >
+                          {activity.action ===
+                          "REQUESTED_CORRECTION"
+                            ? "Correction"
+                            : activity.action.charAt(0) +
+                              activity.action
+                                .slice(1)
+                                .toLowerCase()}
+                        </span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="border border-slate-200 rounded-xl p-8 text-center bg-slate-50/50">
+                <p className="text-sm text-slate-500">
+                  No recent activity found.
+                </p>
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* ---------- Reports Table ---------- */}
         <section className="bg-white border border-slate-200 rounded-2xl shadow-sm overflow-hidden">
