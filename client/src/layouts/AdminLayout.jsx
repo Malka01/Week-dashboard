@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { NavLink, Outlet, useNavigate } from "react-router-dom";
 import { useAuth } from "./../context/AuthContext";
+import AIChatAssistant from "../components/admin/AIChatAssistant";
 
 
 import {
@@ -497,6 +498,7 @@ const AdminLayout = () => {
         </div>
 
       </main>
+      <AIChatAssistant />
 
     </div>
   );

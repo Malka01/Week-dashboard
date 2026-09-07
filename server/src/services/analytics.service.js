@@ -1,3 +1,4 @@
+const mongoose = require("mongoose");
 const Report = require("../models/Report");
 const User = require("../models/User");
 const Project = require("../models/Project");
@@ -19,11 +20,11 @@ const getDashboardAnalytics = async ({
   const reportFilter = {};
 
   if (userId) {
-    reportFilter.userId = userId;
+    reportFilter.userId = new mongoose.Types.ObjectId(userId);
   }
 
   if (projectId) {
-    reportFilter.projectId = projectId;
+    reportFilter.projectId = new mongoose.Types.ObjectId(projectId);
   }
 
   if (status) {
@@ -181,7 +182,7 @@ const getDashboardAnalytics = async ({
   };
 
   if (userId) {
-    userFilter._id = userId;
+    userFilter._id = new mongoose.Types.ObjectId(userId);
   }
 
   const teamMembers = await User.find(
@@ -205,7 +206,7 @@ const getDashboardAnalytics = async ({
     },
 
     ...(projectId
-      ? { projectId }
+      ? { projectId: new mongoose.Types.ObjectId(projectId) }
       : {}),
   })
     .populate("projectId", "name")
