@@ -11,6 +11,7 @@ const adminReportRoutes = require("./routes/adminReport.routes");
 const adminUserRoutes = require("./routes/adminUser.routes");
 const teamRoutes = require("./routes/team.routes");
 const analyticsRoutes = require("./routes/analytics.routes");
+const aiRoutes = require("./routes/ai.routes");
 
 const app = express();
 
@@ -43,6 +44,7 @@ app.use("/api/admin/reports", adminReportRoutes);
 app.use("/api/admin/users", adminUserRoutes);
 app.use( "/api/admin/team", teamRoutes );
 app.use( "/api/admin/analytics", analyticsRoutes );
+app.use("/api/admin/ai", aiRoutes);
 
 
 module.exports = app;

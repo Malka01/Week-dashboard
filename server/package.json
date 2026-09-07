@@ -3,16 +3,17 @@
   "version": "1.0.0",
   "description": "",
   "main": "index.js",
-"scripts": {
-  "start": "node src/server.js",
-  "dev": "nodemon src/server.js",
-  "seed:admin": "node src/utils/seedAdmin.js",
-  "seed": "node src/utils/seedData.js"
-},
+  "scripts": {
+    "start": "node src/server.js",
+    "dev": "nodemon src/server.js",
+    "seed:admin": "node src/utils/seedAdmin.js",
+    "seed": "node src/utils/seedData.js"
+  },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "dependencies": {
+    "@pinecone-database/pinecone": "^8.2.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
     "dotenv": "^17.4.2",
@@ -21,7 +22,8 @@
     "joi": "^18.2.8",
     "jsonwebtoken": "^9.0.3",
     "mongoose": "^9.9.4",
-    "morgan": "^1.12.0"
+    "morgan": "^1.12.0",
+    "openai": "^7.10.0"
   },
   "devDependencies": {
     "nodemon": "^3.1.14"
