@@ -83,7 +83,8 @@ const updateUser = async (req, res) => {
     try {
         const user = await adminUserService.updateUser(
             req.params.id,
-            req.body
+            req.body,
+            req.user._id
         );
 
 
@@ -110,9 +111,10 @@ const updateUser = async (req, res) => {
 const deactivateUser = async (req, res) => {
     try {
         const user =
-            await adminUserService.deactivateUser(
-                req.params.id
-            );
+        await adminUserService.deactivateUser(
+            req.params.id,
+            req.user._id
+        );
 
 
         res.status(200).json({
