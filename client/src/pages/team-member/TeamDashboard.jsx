@@ -113,8 +113,8 @@ const TeamDashboard = () => {
   const currentWeekReport = reports.find(isCurrentWeekReport) || null;
 
   const handleLogout = () => {
+    navigate("/", { replace: true });
     logout();
-    navigate("/login");
   };
 
   // ─── Skeleton Loader ────────────────────────────

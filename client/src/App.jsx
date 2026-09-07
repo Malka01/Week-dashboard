@@ -4,6 +4,8 @@ import {
   Route,
 } from "react-router-dom";
 
+import Home from "./pages/Home";
+
 // Auth Pages
 import Login from "./pages/auth/Login";
 import Register from "./pages/auth/Register";
@@ -37,6 +39,8 @@ const App = () => {
     <ToastProvider>
       <BrowserRouter>
         <Routes>
+
+          <Route path="/" element={<Home />} />
 
   {/* AUTHENTICATION ROUTES */}
         {/* Login */}

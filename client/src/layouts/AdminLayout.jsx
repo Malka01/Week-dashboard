@@ -24,8 +24,8 @@ const AdminLayout = () => {
   const [mobileOpen, setMobileOpen] = useState(false);
 
   const handleLogout = () => {
+    navigate("/", { replace: true });
     logout();
-    navigate("/login");
   };
 
   const closeMobileMenu = () => {
