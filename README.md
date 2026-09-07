@@ -78,8 +78,8 @@ npm run seed
 The admin seed creates:
 
 ```text
-Email:    admin@example.com
-Password: Admin123!
+Email:    example.com
+Password: example
 ```
 
 The sample team-member seed uses `Member123!` for the seeded member accounts. Change seeded or development credentials before using the application in a shared or production environment.
