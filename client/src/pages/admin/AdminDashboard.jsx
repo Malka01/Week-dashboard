@@ -29,17 +29,21 @@ import { getDashboardAnalytics } from "../../services/analyticsService";
 
 // Status helpers
 const statusStyles = {
-  // DRAFT: "bg-slate-100 text-slate-700",
   SUBMITTED: "bg-blue-100 text-blue-700",
   NEEDS_CORRECTION: "bg-orange-100 text-orange-700",
   APPROVED: "bg-green-100 text-green-700",
+  PENDING: "bg-yellow-100 text-yellow-700",
+  NOT_STARTED: "bg-slate-100 text-slate-700",
+  LATE: "bg-red-100 text-red-700",
 };
 
 const statusLabels = {
-  // DRAFT: "Draft",
   SUBMITTED: "Submitted",
   NEEDS_CORRECTION: "Needs Correction",
   APPROVED: "Approved",
+  PENDING: "Pending",
+  NOT_STARTED: "Not Started",
+  LATE: "Late",
 };
 
 // Status colour map for pie chart
@@ -817,18 +821,17 @@ useEffect(() => {
                   // const memberName =
                   //   activity.reviewerId?.name || "Admin";
                   const actorName =
-                    activity.reviewerId?.name || "Administrator";
-                    // report?.userId?.name || "Unknown member";
+                      activity.reviewerId?.name || "Administrator";
 
-                    // const memberName =
-                    //   report?.userId?.name || "Unknown member";
+                    const memberName =
+                      report?.userId?.name || "Unknown member";
 
-                  const projectName =
-                    report?.projectId?.name || "No project";
+                    const projectName =
+                      report?.projectId?.name || "No project";
 
-                  const reviewerName =
+                  // const reviewerName =
                     // activity.reviewerId?.name || "Administrator";
-                    report?.userId?.name || "Unknown member";
+                    // report?.userId?.name || "Unknown member";
 
                   const actionText =
                     activityLabels[activity.action] ||
@@ -864,10 +867,15 @@ useEffect(() => {
                           <span className="font-semibold">
                             {actorName}
                           </span>{" "}
-                          {actionText}{" "}
-                          {/* <span className="font-semibold">
-                            {memberName}
-                          </span> */}
+                          {actionText}
+                        </p>
+
+                        <p className="text-sm text-slate-500 mt-1">
+                          {memberName} · {projectName}
+                        </p>
+
+                        <p className="text-xs text-slate-400 mt-2">
+                          {formatActivityTime(activity.createdAt)}
                         </p>
 
                         <p className="text-sm text-slate-500 mt-1">
@@ -886,10 +894,10 @@ useEffect(() => {
                           </div>
                         )}
 
-                        <p className="text-xs text-slate-400 mt-2">
+                        {/* <p className="text-xs text-slate-400 mt-2">
                           {reviewerName} ·{" "}
                           {formatActivityTime(activity.createdAt)}
-                        </p>
+                        </p> */}
                       </div>
 
                       {/* Action badge */}

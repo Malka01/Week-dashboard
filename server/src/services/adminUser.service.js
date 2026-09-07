@@ -67,12 +67,24 @@ const createUser = async ({
     return result;
 };
 
-const updateUser = async (userId, data) => {
+
+const updateUser = async (userId, data, actorId) => {
+// const updateUser = async (userId, data) => {
     const user = await User.findById(userId);
 
     if (!user) {
         throw new Error("User not found");
     }
+
+    if (userId.toString() === actorId.toString()) {
+    if (data.role !== undefined) {
+        throw new Error("You cannot change your own role");
+    }
+
+    if (data.isActive !== undefined && data.isActive === false) {
+        throw new Error("You cannot deactivate your own account");
+    }
+}
 
     if (data.name !== undefined) {
         user.name = data.name.trim();
@@ -112,9 +124,21 @@ const updateUser = async (userId, data) => {
 
     }
 
+    // if (data.isActive !== undefined) {
+    //     user.isActive = Boolean(data.isActive);
+    // }
     if (data.isActive !== undefined) {
-        user.isActive = Boolean(data.isActive);
+    if (typeof data.isActive === "boolean") {
+        user.isActive = data.isActive;
+    } else if (data.isActive === "true") {
+        user.isActive = true;
+    } else if (data.isActive === "false") {
+        user.isActive = false;
+    } else {
+        throw new Error("isActive must be a boolean");
     }
+}
+    
 
     if (data.password) {
         user.password = await bcrypt.hash(
@@ -132,7 +156,30 @@ const updateUser = async (userId, data) => {
     return result;
 };
 
-const deactivateUser = async (userId) => {
+// const deactivateUser = async (userId) => {
+//     const user = await User.findById(userId);
+
+//     if (!user) {
+//         throw new Error("User not found");
+//     }
+
+//     user.isActive = false;
+
+//     await user.save();
+
+//     const result = user.toObject();
+
+//     delete result.password;
+
+//     return result;
+// };
+const deactivateUser = async (userId, actorId) => {
+    if (userId.toString() === actorId.toString()) {
+        throw new Error(
+            "You cannot deactivate your own account"
+        );
+    }
+
     const user = await User.findById(userId);
 
     if (!user) {

@@ -78,16 +78,11 @@ const updateProject = async (
 };
 
 const deleteProject = async (projectId) => {
-  const project = await Project.findById(projectId);
+  const project = await Project.findByIdAndDelete(projectId);
 
   if (!project) {
     throw new Error("Project not found");
   }
-
-  // Soft delete instead of permanently deleting
-  project.isActive = false;
-
-  await project.save();
 
   return project;
 };
