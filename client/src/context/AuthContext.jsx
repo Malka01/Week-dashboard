@@ -15,6 +15,10 @@ export const AuthProvider = ({ children }) => {
       : null;
   });
 
+  const [token, setToken] = useState(() => {
+    return localStorage.getItem("token");
+  });
+
   const login = (data) => {
     localStorage.setItem("token", data.token);
     localStorage.setItem(
@@ -22,6 +26,7 @@ export const AuthProvider = ({ children }) => {
       JSON.stringify(data.user)
     );
 
+    setToken(data.token);
     setUser(data.user);
   };
 
@@ -29,26 +34,28 @@ export const AuthProvider = ({ children }) => {
     localStorage.removeItem("token");
     localStorage.removeItem("user");
 
+    setToken(null);
     setUser(null);
   };
 
-  const updateUser = (updatedUser) => { 
-    setUser(updatedUser); 
-    localStorage.setItem( 
-      "user", JSON.stringify
-      // eslint-disable-next-line no-unexpected-multiline
-      (updatedUser) 
-    ); 
+  const updateUser = (updatedUser) => {
+    setUser(updatedUser);
+
+    localStorage.setItem(
+      "user",
+      JSON.stringify(updatedUser)
+    );
   };
 
   return (
     <AuthContext.Provider
       value={{
         user,
+        token,
         login,
         logout,
         updateUser,
-        isAuthenticated: !!user,
+        isAuthenticated: !!user && !!token,
       }}
     >
       {children}
